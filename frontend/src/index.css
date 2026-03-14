@@ -1,0 +1,64 @@
+:root {
+  font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #17323a;
+  --ink: #17323a;
+  --muted: rgba(23, 50, 58, 0.72);
+  --line: rgba(23, 50, 58, 0.12);
+  --line-strong: rgba(23, 50, 58, 0.18);
+  --sea-deep: #0b4f5c;
+  --sea-mid: #0f6a73;
+  --sea-light: #67c7c0;
+  --foam: #f8fcfb;
+  --mist: #eaf6f4;
+  --surface: #ffffff;
+  --surface-soft: #eef6f4;
+  --surface-tint: rgba(255, 255, 255, 0.82);
+  --sand: #f3ead7;
+  --sun: #dfae49;
+  --sun-soft: rgba(223, 174, 73, 0.16);
+  --success: #2d8c6a;
+  --success-soft: rgba(45, 140, 106, 0.14);
+  --warning: #b8842d;
+  --warning-soft: rgba(184, 132, 45, 0.14);
+  --danger: #c55a5a;
+  --danger-soft: rgba(197, 90, 90, 0.14);
+  background:
+    radial-gradient(circle at 12% 14%, rgba(103, 199, 192, 0.2), transparent 24%),
+    radial-gradient(circle at 88% 12%, rgba(15, 106, 115, 0.12), transparent 22%),
+    radial-gradient(circle at 78% 84%, rgba(223, 174, 73, 0.08), transparent 18%),
+    linear-gradient(180deg, #eef7f5 0%, #f5faf8 44%, #fbfdfc 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+  background: transparent;
+  color: var(--ink);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}

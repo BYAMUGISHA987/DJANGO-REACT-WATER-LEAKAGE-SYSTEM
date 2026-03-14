@@ -1,0 +1,19 @@
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DJANGO_SECRET_KEY: local-compose-secret
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1
+      DJANGO_CSRF_TRUSTED_ORIGINS: http://localhost:8000,http://127.0.0.1:8000
+      SQLITE_PATH: /app/backend/data/db.sqlite3
+      PORT: "8000"
+    volumes:
+      - sqlite_data:/app/backend/data
+      - media_data:/app/backend/media
+
+volumes:
+  sqlite_data:
+  media_data:

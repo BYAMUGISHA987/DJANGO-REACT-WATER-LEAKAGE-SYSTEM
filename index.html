@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Aqual Sentinel Launcher</title>
+    <style>
+      :root {
+        color: #0d2b3b;
+        background:
+          radial-gradient(circle at top right, rgba(41, 168, 173, 0.16), transparent 28%),
+          linear-gradient(180deg, #eef5f3 0%, #f8f6ef 100%);
+        font-family: "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        padding: 1.5rem;
+      }
+
+      main {
+        width: min(680px, 100%);
+        padding: 2rem;
+        border: 1px solid rgba(13, 43, 59, 0.1);
+        border-radius: 1.5rem;
+        background: rgba(255, 255, 255, 0.82);
+        box-shadow: 0 24px 70px rgba(13, 43, 59, 0.12);
+      }
+
+      h1 {
+        margin: 0 0 1rem;
+        font-size: clamp(2rem, 4vw, 3rem);
+        line-height: 1;
+      }
+
+      p {
+        margin: 0.75rem 0;
+        line-height: 1.6;
+      }
+
+      .status {
+        margin-top: 0.5rem;
+        color: rgba(13, 43, 59, 0.72);
+        font-size: 0.95rem;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+      }
+
+      a {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 3rem;
+        padding: 0 1.1rem;
+        border-radius: 999px;
+        text-decoration: none;
+        font-weight: 700;
+      }
+
+      .primary {
+        background: #0d2b3b;
+        color: #f7f8f2;
+      }
+
+      .secondary {
+        border: 1px solid rgba(13, 43, 59, 0.16);
+        color: #0d2b3b;
+      }
+
+      code {
+        padding: 0.2rem 0.4rem;
+        border-radius: 0.45rem;
+        background: rgba(13, 43, 59, 0.06);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Aqual Sentinel</h1>
+            <p>
+        Live Server should not open the project root as a folder listing. It should
+        take you to the app instead.
+      </p>
+      <p>
+        Open the local app from
+        <code id="local-url">http://127.0.0.1:8000/</code>.
+      </p>
+      <p class="status" id="launch-status">Checking the local app and opening it automatically...</p>
+
+      <div class="actions">
+        <a class="primary" id="open-local" href="http://127.0.0.1:8000/">
+          Open app
+        </a>
+        <a class="secondary" id="open-dev" href="http://127.0.0.1:5173/">
+          Open dev server
+        </a>
+      </div>
+    </main>
+
+    <script>
+      const localUrl = `${window.location.protocol}//${window.location.hostname}:8000/`
+      const devUrl = `${window.location.protocol}//${window.location.hostname}:5173/`
+      const statusElement = document.getElementById('launch-status')
+
+      document.getElementById('local-url').textContent = localUrl
+      document.getElementById('open-local').href = localUrl
+      document.getElementById('open-dev').href = devUrl
+
+      async function tryOpen(url, label) {
+        try {
+          await fetch(url, { mode: 'no-cors' })
+          statusElement.textContent = `Opening ${label}...`
+          window.location.replace(url)
+          return true
+        } catch {
+          return false
+        }
+      }
+
+      window.setTimeout(async () => {
+        if (await tryOpen(localUrl, 'the local app')) {
+          return
+        }
+
+        if (await tryOpen(devUrl, 'the dev server')) {
+          return
+        }
+
+        statusElement.textContent =
+          'The app is not running yet. Start the local server, then use the buttons below.'
+      }, 250)
+    </script>
+  </body>
+</html>

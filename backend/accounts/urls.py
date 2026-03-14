@@ -1,0 +1,41 @@
+from django.urls import path
+
+from .views import (
+    announcements_api,
+    account_availability_api,
+    direct_messages_api,
+    auth_session_api,
+    contact_messages_api,
+    iot_leak_reports_api,
+    leak_reports_api,
+    launch_requests_api,
+    login_api,
+    logout_api,
+    products_api,
+    sensors_api,
+    site_content_api,
+    signup_api,
+    team_member_detail_api,
+    team_members_api,
+    users_api,
+)
+
+urlpatterns = [
+    path('auth/session/', auth_session_api, name='auth-session-api'),
+    path('auth/availability/', account_availability_api, name='account-availability-api'),
+    path('auth/login/', login_api, name='login-api'),
+    path('auth/signup/', signup_api, name='signup-api'),
+    path('auth/logout/', logout_api, name='logout-api'),
+    path('auth/users/', users_api, name='users-api'),
+    path('sensors/', sensors_api, name='sensors-api'),
+    path('announcements/', announcements_api, name='announcements-api'),
+    path('leak-reports/', leak_reports_api, name='leak-reports-api'),
+    path('iot/leak-reports/', iot_leak_reports_api, name='iot-leak-reports-api'),
+    path('site-content/', site_content_api, name='site-content-api'),
+    path('products/', products_api, name='products-api'),
+    path('team-members/', team_members_api, name='team-members-api'),
+    path('team-members/<int:member_id>/', team_member_detail_api, name='team-member-detail-api'),
+    path('contact-messages/', contact_messages_api, name='contact-messages-api'),
+    path('direct-messages/', direct_messages_api, name='direct-messages-api'),
+    path('launch-requests/', launch_requests_api, name='launch-requests-api'),
+]

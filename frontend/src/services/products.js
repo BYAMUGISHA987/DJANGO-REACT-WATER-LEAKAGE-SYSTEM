@@ -21,12 +21,19 @@ async function parseJson(response) {
   }
 }
 
-export async function fetchProducts() {
+async function requestJson(url, { method = 'GET', body, needsCsrf = false } = {}) {
+  const csrfToken = needsCsrf ? await getCsrfToken() : ''
   let response
 
   try {
-    response = await fetch(productsEndpoint, {
+    response = await fetch(url, {
+      method,
       credentials: 'include',
+      headers: {
+        ...(body ? { 'Content-Type': 'application/json' } : {}),
+        ...(csrfToken ? { 'X-CSRFToken': csrfToken } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
     })
   } catch {
     throw new Error(
@@ -43,9 +50,17 @@ export async function fetchProducts() {
   return data
 }
 
+export async function fetchProducts() {
+  return requestJson(productsEndpoint)
+}
+
 export async function saveProduct(details) {
   const csrfToken = await getCsrfToken()
   const formData = new FormData()
+
+  if (details.id) {
+    formData.append('id', details.id)
+  }
 
   formData.append('name', details.name)
   formData.append('summary', details.summary)
@@ -87,4 +102,12 @@ export async function saveProduct(details) {
   }
 
   return data
+}
+
+export async function deleteProduct(id) {
+  return requestJson(productsEndpoint, {
+    method: 'DELETE',
+    body: { id },
+    needsCsrf: true,
+  })
 }

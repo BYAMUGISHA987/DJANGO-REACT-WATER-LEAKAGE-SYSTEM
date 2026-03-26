@@ -86,7 +86,7 @@ class SiteContent(models.Model):
             'Aqual Sentinel now includes a real About Us page with a team roster, '
             'contact form, and admin-managed updates. Team members are managed from '
             'the workspace, and incoming messages are kept for review in the '
-            'administration panel.'
+            'workspace inbox.'
         )
     )
     products_eyebrow = models.CharField(max_length=80, default='Product page')
@@ -103,7 +103,7 @@ class SiteContent(models.Model):
     workspace_description_admin = models.TextField(
         default=(
             'You are signed in as an admin. The launch dashboard is live, and '
-            'you can manage system administrators, sensors, team members, products, and contact '
+            'you can manage system administrators, systems, team members, products, and contact '
             'messages from this workspace.'
         )
     )
@@ -119,9 +119,33 @@ class SiteContent(models.Model):
         default=(
             'The seeded admin account exists in the system, but the sign-in page does not '
             'display any password. Admins can create other system '
-            'administrators, register sensors, publish products, add team '
+            'administrators, register systems, publish products, add team '
             'members, and review contact messages after sign-in.'
         )
+    )
+    login_background_primary = models.FileField(
+        upload_to='site_content/login/',
+        blank=True,
+    )
+    login_background_secondary = models.FileField(
+        upload_to='site_content/login/',
+        blank=True,
+    )
+    login_background_video = models.FileField(
+        upload_to='site_content/login/',
+        blank=True,
+    )
+    workspace_background_primary = models.FileField(
+        upload_to='site_content/workspace/',
+        blank=True,
+    )
+    workspace_background_secondary = models.FileField(
+        upload_to='site_content/workspace/',
+        blank=True,
+    )
+    workspace_background_video = models.FileField(
+        upload_to='site_content/workspace/',
+        blank=True,
     )
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -335,12 +359,14 @@ class LeakReport(models.Model):
 
     def save(self, *args, **kwargs):
         if self.sensor_id:
-            self.sensor_name = self.sensor.display_name
-            self.location = self.sensor.location
+            if not self.sensor_name:
+                self.sensor_name = self.sensor.display_name
+            if not self.location:
+                self.location = self.sensor.location
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f'{self.sensor_name or "Sensor signal"} - {self.location or "Unknown location"}'
+        return f'{self.sensor_name or "System signal"} - {self.location or "Unknown location"}'
 
 
 class ContactMessage(models.Model):

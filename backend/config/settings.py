@@ -6,6 +6,10 @@ def env_list(name, default=''):
     value = os.getenv(name, default)
     return [item.strip() for item in value.split(',') if item.strip()]
 
+
+def env_bool(name, default='False'):
+    return os.getenv(name, default).lower() in {'1', 'true', 'yes', 'on'}
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 FRONTEND_DIST_DIR = BASE_DIR / 'frontend_dist'
 SECRET_KEY = os.getenv(
@@ -14,10 +18,17 @@ SECRET_KEY = os.getenv(
 )
 DEBUG = os.getenv('DJANGO_DEBUG', 'True').lower() == 'true'
 ALLOWED_HOSTS = env_list('DJANGO_ALLOWED_HOSTS', '127.0.0.1,localhost')
-CSRF_TRUSTED_ORIGINS = env_list(
-    'DJANGO_CSRF_TRUSTED_ORIGINS',
-    'http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:8000,http://localhost:8000',
+FRONTEND_ALLOWED_ORIGINS = env_list('DJANGO_CORS_ALLOWED_ORIGINS', '')
+CSRF_TRUSTED_ORIGINS = list(
+    dict.fromkeys(
+        env_list(
+            'DJANGO_CSRF_TRUSTED_ORIGINS',
+            'http://127.0.0.1:5173,http://localhost:5173,http://127.0.0.1:8000,http://localhost:8000',
+        )
+        + FRONTEND_ALLOWED_ORIGINS
+    )
 )
+CORS_ALLOWED_ORIGINS = FRONTEND_ALLOWED_ORIGINS
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -33,6 +44,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'config.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -90,7 +102,11 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [FRONTEND_DIST_DIR] if FRONTEND_DIST_DIR.exists() else []
 MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+MEDIA_ROOT = Path(os.getenv('DJANGO_MEDIA_ROOT', str(BASE_DIR / 'media')))
+SESSION_COOKIE_SAMESITE = os.getenv('DJANGO_SESSION_COOKIE_SAMESITE', 'Lax')
+SESSION_COOKIE_SECURE = env_bool('DJANGO_SESSION_COOKIE_SECURE', 'False')
+CSRF_COOKIE_SAMESITE = os.getenv('DJANGO_CSRF_COOKIE_SAMESITE', 'Lax')
+CSRF_COOKIE_SECURE = env_bool('DJANGO_CSRF_COOKIE_SECURE', 'False')
 STORAGES = {
     'default': {
         'BACKEND': 'django.core.files.storage.FileSystemStorage',

@@ -9,35 +9,92 @@ import './App.css'
 import {
   createContactMessage,
   createTeamMember,
+  deleteContactMessage,
+  deleteTeamMember,
   fetchContactMessages,
   fetchTeamMembers,
+  updateContactMessageStatus,
   updateTeamMember,
 } from './services/about'
 import {
   checkAccountAvailability,
+  changePassword,
   createManagedUser,
+  deleteManagedUser,
   fetchSession,
   fetchUsers,
   loginAccount,
+  logoutAccount,
   signupAccount,
+  updateManagedUser,
 } from './services/auth'
 import {
   createLaunchRequest,
+  deleteLaunchRequest,
   fetchLaunchDashboard,
   launchRequestEndpoint,
   launchRequestStore,
 } from './services/launchRequests'
 import {
+  deleteDirectMessage,
+  fetchDirectMessages,
+  sendDirectMessage,
+} from './services/messages'
+import {
   createAnnouncement,
   createLeakReport,
   createSensor,
+  deleteAnnouncement,
+  deleteLeakReport,
+  deleteSensor,
   fetchAnnouncements,
   fetchLeakReports,
   fetchSensors,
 } from './services/operations'
-import { fetchDirectMessages, sendDirectMessage } from './services/messages'
-import { fetchProducts, saveProduct } from './services/products'
-import { fetchSiteContent } from './services/siteContent'
+import { deleteProduct, fetchProducts, saveProduct } from './services/products'
+import { deleteSiteContent, fetchSiteContent, saveSiteContent } from './services/siteContent'
+
+function normalizeBasePath(value, fallback = '/') {
+  if (!value) {
+    return fallback
+  }
+
+  const trimmedValue = value.replace(/^\/+|\/+$/g, '')
+  return trimmedValue ? `/${trimmedValue}/` : '/'
+}
+
+const appBasePath = normalizeBasePath(import.meta.env.VITE_APP_BASE_PATH, '/')
+
+function stripAppBasePath(pathname) {
+  if (appBasePath === '/') {
+    return pathname || '/'
+  }
+
+  const baseWithoutTrailingSlash = appBasePath.slice(0, -1)
+  if (pathname === baseWithoutTrailingSlash || pathname === appBasePath) {
+    return '/'
+  }
+
+  if (pathname.startsWith(appBasePath)) {
+    return pathname.slice(appBasePath.length - 1) || '/'
+  }
+
+  return pathname || '/'
+}
+
+function buildAppUrl(route) {
+  const normalizedRoute = route === '/' ? '' : String(route).replace(/^\/+/, '')
+
+  if (appBasePath === '/') {
+    return normalizedRoute ? `/${normalizedRoute}` : '/'
+  }
+
+  return normalizedRoute ? `${appBasePath}${normalizedRoute}` : appBasePath
+}
+
+function resolvePublicAssetUrl(path) {
+  return `${import.meta.env.BASE_URL}${String(path).replace(/^\/+/, '')}`
+}
 
 const focusAreaOptions = [
   'Leak monitoring',
@@ -48,83 +105,104 @@ const focusAreaOptions = [
 
 const announcementKindOptions = ['announcement', 'advert']
 const leakStatusOptions = ['critical', 'investigating', 'stable', 'resolved']
-const configuredApiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
+const sitePageOptions = ['home', 'about', 'products', 'workspace']
+const managedAccountRoleOptions = ['admin', 'user']
+const browserSupportedVideoAccept =
+  'video/mp4,video/webm,video/ogg,.mp4,.webm,.ogg,.ogv'
+const sectionEditorLabelByPage = {
+  home: 'Home',
+  about: 'About',
+  products: 'Products',
+  workspace: 'Workspace',
+}
+const stockMedia = {
+  ambientBackgroundVideo: resolvePublicAssetUrl('media/custom/water-network-background.mp4'),
+  loginBackgroundVideo: resolvePublicAssetUrl('media/custom/water-network-background.mp4'),
+  pipeBurstVideo: resolvePublicAssetUrl('media/stock/pipe-burst-loop.mp4'),
+  tapDripVideo: resolvePublicAssetUrl('media/stock/tap-drip-loop.mp4'),
+  faucetCloseupVideo: resolvePublicAssetUrl('media/stock/faucet-closeup-loop.mp4'),
+  pipeLeakImage: resolvePublicAssetUrl('media/custom/field-pipe-water-leak.jpg'),
+  leakingTapImage: resolvePublicAssetUrl('media/custom/brass-tap-drip.jpg'),
+  tiledWallLeakImage: resolvePublicAssetUrl('media/custom/tiled-wall-water-leak.jpg'),
+  brickDrainLeakImage: resolvePublicAssetUrl('media/custom/brick-drainpipe-leak.jpg'),
+  yellowValveImage: resolvePublicAssetUrl('media/custom/yellow-water-valve.jpg'),
+}
 
 const defaultAccessHighlights = [
   {
-    title: 'Login and signup',
+    title: 'Secure workspace access',
     description:
-      'Visitors can create regular user accounts from the website and sign back in with the same interface.',
+      'Water teams can create accounts, sign in, and move from the public site into the protected monitoring workspace without switching tools.',
   },
   {
-    title: 'Product page',
+    title: 'Platform showcase',
     description:
-      'A public products page now pulls the Aqua Sentinel system details from live content instead of fixed page text.',
+      'The public product experience now pulls live platform details, visuals, and media instead of relying on fixed brochure copy.',
   },
   {
-    title: 'About Us page',
+    title: 'Response team profile',
     description:
-      'The About Us page now pulls the team roster from live content instead of fixed page copy.',
+      'The team page now presents operators, engineers, and support staff from live content, making the platform feel current and credible.',
   },
   {
-    title: 'Admin-managed content',
+    title: 'Operational publishing',
     description:
-      'Admins can register sensors, create other system administrators, add new team members with uploaded profile photos, and read contact messages from the workspace.',
+      'Administrators can register systems, publish updates, add team profiles, and review incoming messages from one coordinated workspace.',
   },
 ]
 
 const defaultAboutHighlights = [
   {
-    title: 'Core team seeded',
+    title: 'Field-ready team presence',
     description:
-      'The initial roster includes Byamugisha Octavious, Asiimwe Shanon, Ankunda Reavin, Patience, Bwambale Fedwin, and supervisor Mr. Ambrose Izaara.',
+      'The About page introduces the people behind monitoring, verification, communication, and water-network response.',
   },
   {
-    title: 'More members from admin',
+    title: 'Live roster updates',
     description:
-      'Additional team members can be added later by an admin without editing the page code.',
+      'Additional team members can be added from the workspace without changing the page code or redeploying the app.',
   },
   {
-    title: 'Messages are stored',
+    title: 'Trusted communication flow',
     description:
-      'Every contact form submission is stored and appears in the workspace inbox for review.',
+      'Every contact submission is stored and routed into the workspace inbox so public questions never get lost.',
   },
 ]
 
 const defaultProductHighlights = [
   {
-    title: 'Product content is dynamic',
+    title: 'Live platform storytelling',
     description:
-      'The Aqua Sentinel system page now reads its name, summary, description, and image from live content.',
+      'The product page now pulls live names, summaries, descriptions, images, and video so the platform story stays current.',
   },
   {
-    title: 'Admin-managed uploads',
+    title: 'Rich media publishing',
     description:
-      'Admins can browse for a product image from the workspace and publish it without editing the code.',
+      'Admins can upload product images or videos directly from the workspace to give the platform a more professional presentation.',
   },
   {
-    title: 'Built for operations teams',
+    title: 'Built for water operations',
     description:
-      'The product page connects the platform story to live team visibility, launch intake, and administration workflows.',
+      'The experience ties platform visuals to leak telemetry, response workflows, team visibility, and public communication.',
   },
 ]
 
 const defaultWorkspaceHighlights = [
-  { title: 'Session-based authentication is active for the workspace.', description: '' },
+  { title: 'Secure session-based authentication protects the workspace.', description: '' },
   {
-    title: 'The launch dashboard refreshes automatically every 30 seconds.',
+    title: 'The request and telemetry dashboard refreshes automatically every 30 seconds.',
     description: '',
   },
   {
-    title: 'The product page reads uploaded images and product copy from the workspace.',
+    title: 'The public product experience reads uploaded visuals and live platform copy from the workspace.',
     description: '',
   },
   {
-    title: 'The About Us roster and contact inbox stay connected to live records.',
+    title: 'The team roster and contact inbox stay connected to live records.',
     description: '',
   },
   {
-    title: 'Leak locations are resolved from the registered IoT sensor, not typed into the page.',
+    title: 'Leak locations are resolved from registered systems instead of being typed manually.',
     description: '',
   },
 ]
@@ -139,38 +217,46 @@ const defaultPageSections = {
 const defaultSiteContent = {
   brand: {
     name: 'Aqual Sentinel',
-    tagline: 'Water operations, team presence, and admin workflow',
+    tagline: 'Leak intelligence for pipes, taps, and water networks',
   },
   pages: {
     home: {
-      eyebrow: 'Dynamic operations platform',
-      title: 'Login, products, About Us, and admin publishing now live together.',
+      eyebrow: 'Pipe and tap monitoring',
+      title: 'Detect pipe and tap leakages early, respond faster, and protect every water line.',
       description:
-        'The public experience now includes a real product page, a live About Us roster, and a contact form. The private workspace keeps auth, launch requests, and administration in one place.',
+        'Aqual Sentinel turns leak signals, field visuals, response priorities, and public communication into one live command surface for modern water operations.',
     },
     about: {
-      eyebrow: 'About Us',
-      title: 'The team page now runs from live content.',
+      eyebrow: 'Response team',
+      title: 'Meet the engineers, operators, and responders behind the leak intelligence network.',
       description:
-        'Aqual Sentinel now includes a real About Us page with a team roster, contact form, and admin-managed updates. Team members are managed from the workspace, and incoming messages are kept for review in the administration panel.',
+        'Meet the team coordinating monitoring, field verification, public communication, and response support across the water network.',
     },
     products: {
-      eyebrow: 'Product page',
+      eyebrow: 'Monitoring platform',
       description:
-        'Aqua Sentinel system gives water operations teams a single place for monitoring, response coordination, and admin-controlled publishing.',
+        'Aqual Sentinel combines live telemetry, leak verification, response coordination, and polished public communication in one monitoring platform for water operations teams.',
     },
     workspace: {
-      eyebrow: 'Authenticated workspace',
+      eyebrow: 'Leak detection workspace',
       descriptionAdmin:
-        'You are signed in as an admin. The launch dashboard is live, and you can manage system administrators, sensors, products, team members, and contact messages from this workspace.',
+        'You are signed in as an admin. Monitor leak telemetry, publish updates, register systems, and coordinate response activity from one workspace.',
       descriptionUser:
-        'You are signed in as a user. The launch dashboard is live, and you can view the current operating picture and public site information.',
+        'You are signed in as a user. Monitor live leak telemetry, review public updates, and follow the current operating picture from one workspace.',
     },
   },
   adminNote: {
     title: 'Admin note',
     description:
-      'The seeded admin account exists in the system, but the sign-in page does not display any password. Admins can create other system administrators, register sensors, publish products, add team members, and review contact messages after sign-in.',
+      'The seeded admin account exists in the system, but the sign-in page does not display any password. Admins can create other system administrators, register systems, publish products, add team members, and review contact messages after sign-in.',
+  },
+  media: {
+    loginBackgroundVideoUrl: '',
+    loginBackgroundPrimaryUrl: '',
+    loginBackgroundSecondaryUrl: '',
+    workspaceBackgroundVideoUrl: '',
+    workspaceBackgroundPrimaryUrl: '',
+    workspaceBackgroundSecondaryUrl: '',
   },
   highlights: {
     home: defaultAccessHighlights,
@@ -192,6 +278,7 @@ const emptyDashboard = {
     })),
   },
   recentRequests: [],
+  requests: [],
 }
 
 const emptyTeamData = {
@@ -214,10 +301,12 @@ const emptyDirectMessageData = {
   summary: {
     totalContacts: 0,
     unreadMessages: 0,
+    totalMessages: 0,
   },
   contacts: [],
   activeParticipant: null,
   messages: [],
+  systemMessages: [],
 }
 
 const emptyProductData = {
@@ -272,11 +361,20 @@ const initialSignupForm = {
   role: '',
 }
 
+const initialPasswordChangeForm = {
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: '',
+}
+
 const initialPasswordVisibility = {
   login: false,
   signup: false,
   signupConfirm: false,
   managed: false,
+  settingsCurrent: false,
+  settingsNext: false,
+  settingsConfirm: false,
 }
 
 const initialLaunchForm = {
@@ -287,9 +385,11 @@ const initialLaunchForm = {
 }
 
 const initialManagedUserForm = {
+  id: '',
   fullName: '',
   username: '',
   email: '',
+  role: 'admin',
   password: '',
 }
 
@@ -332,6 +432,7 @@ const initialDirectMessageForm = {
 }
 
 const initialProductForm = {
+  id: '',
   name: 'Aqua Sentinel system',
   summary: '',
   description: '',
@@ -343,6 +444,7 @@ const initialProductForm = {
 }
 
 const initialAnnouncementForm = {
+  id: '',
   kind: 'announcement',
   title: '',
   message: '',
@@ -353,24 +455,180 @@ const initialAnnouncementForm = {
   ctaLabel: '',
   ctaLink: '',
   displayOrder: '',
+  isActive: true,
 }
 
 const initialSensorForm = {
+  id: '',
   sensorCode: '',
   displayName: '',
   location: '',
   description: '',
+  isActive: true,
 }
 
 const initialLeakForm = {
+  id: '',
   sensorId: '',
   leakageRate: '',
   status: 'investigating',
   observedAt: '',
   displayOrder: '',
+  isActive: true,
+}
+
+function createSiteContentForm(content = defaultSiteContent) {
+  return {
+    brandName: content.brand?.name || defaultSiteContent.brand.name,
+    brandTagline: content.brand?.tagline || defaultSiteContent.brand.tagline,
+    homeEyebrow: content.pages?.home?.eyebrow || defaultSiteContent.pages.home.eyebrow,
+    homeTitle: content.pages?.home?.title || defaultSiteContent.pages.home.title,
+    homeDescription:
+      content.pages?.home?.description || defaultSiteContent.pages.home.description,
+    aboutEyebrow:
+      content.pages?.about?.eyebrow || defaultSiteContent.pages.about.eyebrow,
+    aboutTitle: content.pages?.about?.title || defaultSiteContent.pages.about.title,
+    aboutDescription:
+      content.pages?.about?.description || defaultSiteContent.pages.about.description,
+    productsEyebrow:
+      content.pages?.products?.eyebrow || defaultSiteContent.pages.products.eyebrow,
+    productsDescription:
+      content.pages?.products?.description ||
+      defaultSiteContent.pages.products.description,
+    workspaceEyebrow:
+      content.pages?.workspace?.eyebrow ||
+      defaultSiteContent.pages.workspace.eyebrow,
+    workspaceDescriptionAdmin:
+      content.pages?.workspace?.descriptionAdmin ||
+      defaultSiteContent.pages.workspace.descriptionAdmin,
+    workspaceDescriptionUser:
+      content.pages?.workspace?.descriptionUser ||
+      defaultSiteContent.pages.workspace.descriptionUser,
+    adminNoteTitle:
+      content.adminNote?.title || defaultSiteContent.adminNote.title,
+    adminNoteDescription:
+      content.adminNote?.description || defaultSiteContent.adminNote.description,
+  }
+}
+
+function createSiteMediaForm() {
+  return {
+    loginBackgroundVideo: null,
+    loginBackgroundVideoName: '',
+    clearLoginBackgroundVideo: false,
+    loginBackgroundPrimary: null,
+    loginBackgroundPrimaryName: '',
+    clearLoginBackgroundPrimary: false,
+    loginBackgroundSecondary: null,
+    loginBackgroundSecondaryName: '',
+    clearLoginBackgroundSecondary: false,
+    workspaceBackgroundVideo: null,
+    workspaceBackgroundVideoName: '',
+    clearWorkspaceBackgroundVideo: false,
+    workspaceBackgroundPrimary: null,
+    workspaceBackgroundPrimaryName: '',
+    clearWorkspaceBackgroundPrimary: false,
+    workspaceBackgroundSecondary: null,
+    workspaceBackgroundSecondaryName: '',
+    clearWorkspaceBackgroundSecondary: false,
+  }
+}
+
+function sanitizeSectionGroups(sections = {}) {
+  if (!sections || typeof sections !== 'object' || Array.isArray(sections)) {
+    return {}
+  }
+
+  return sitePageOptions.reduce((accumulator, key) => {
+    if (Array.isArray(sections[key]) && sections[key].length) {
+      accumulator[key] = sections[key]
+    }
+
+    return accumulator
+  }, {})
+}
+
+function createSiteHighlightsForm(content = defaultSiteContent) {
+  return sitePageOptions.reduce((accumulator, key) => {
+    const pageHighlights = Array.isArray(content.highlights?.[key])
+      ? content.highlights[key]
+      : defaultSiteContent.highlights[key] || []
+
+    accumulator[key] = pageHighlights.map((item, index) => ({
+      id: item.id || `${key}-highlight-${index}`,
+      title: item.title || '',
+      description: item.description || '',
+      displayOrder: item.displayOrder ?? index + 1,
+    }))
+
+    return accumulator
+  }, {})
+}
+
+function createSiteSectionsDraft(content = defaultSiteContent) {
+  return JSON.stringify(sanitizeSectionGroups(content.sections), null, 2)
+}
+
+function prepareSiteHighlightsPayload(highlights) {
+  return sitePageOptions.reduce((accumulator, key) => {
+    const pageHighlights = Array.isArray(highlights?.[key]) ? highlights[key] : []
+
+    accumulator[key] = pageHighlights.map((item, index) => {
+      const title = String(item.title || '').trim()
+      if (!title) {
+        throw new Error(
+          `${sectionEditorLabelByPage[key]} highlight ${index + 1} needs a title before saving.`,
+        )
+      }
+
+      const displayOrderValue = String(item.displayOrder ?? '').trim()
+      const displayOrder = displayOrderValue ? Number.parseInt(displayOrderValue, 10) : index + 1
+
+      if (!Number.isInteger(displayOrder) || displayOrder < 0) {
+        throw new Error(
+          `${sectionEditorLabelByPage[key]} highlight ${index + 1} needs a valid display order.`,
+        )
+      }
+
+      return {
+        title,
+        description: String(item.description || '').trim(),
+        displayOrder,
+      }
+    })
+
+    return accumulator
+  }, {})
+}
+
+function normalizeSiteContentSnapshot(content = {}) {
+  return {
+    ...content,
+    highlights: {
+      ...defaultSiteContent.highlights,
+      ...(content.highlights || {}),
+    },
+    sections: sanitizeSectionGroups(content.sections),
+  }
+}
+
+function refreshLegacyText(value, legacyValue, replacement) {
+  return value === legacyValue ? replacement : value
 }
 
 function normalizeRoute(pathname) {
+  if (pathname === '/login' || pathname === '/login/') {
+    return '/login'
+  }
+
+  if (pathname === '/signup' || pathname === '/signup/') {
+    return '/signup'
+  }
+
+  if (pathname === '/settings' || pathname === '/settings/') {
+    return '/settings'
+  }
+
   if (pathname === '/about' || pathname === '/about/') {
     return '/about'
   }
@@ -392,6 +650,35 @@ function formatTimestamp(value) {
     timeStyle: 'short',
     timeZone: 'Africa/Kampala',
   }).format(new Date(value))
+}
+
+function formatDateValue(value) {
+  if (!value) {
+    return 'Unknown'
+  }
+
+  return new Intl.DateTimeFormat('en-UG', {
+    dateStyle: 'medium',
+    timeZone: 'Africa/Kampala',
+  }).format(new Date(value))
+}
+
+function formatDateTimeLocalValue(value) {
+  if (!value) {
+    return ''
+  }
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+
+  const timezoneOffset = date.getTimezoneOffset() * 60000
+  return new Date(date.getTime() - timezoneOffset).toISOString().slice(0, 16)
+}
+
+function extractLeakRateValue(value) {
+  return String(value || '').replace(/\s*L\/min$/, '')
 }
 
 function formatClock(value) {
@@ -1350,8 +1637,305 @@ function DeskFeedRow({ item }) {
   )
 }
 
+function JourneyStepCard({ step, title, description, compact = false }) {
+  return (
+    <article className={`journey-step-card${compact ? ' is-compact' : ''}`}>
+      <span className="journey-step-index">{step}</span>
+      <h3>{title}</h3>
+      <p>{description}</p>
+    </article>
+  )
+}
+
+function SpotlightPanel({
+  item,
+  eyebrow,
+  title,
+  description,
+  badges = [],
+  stats = [],
+  theme = 'sea',
+  compact = false,
+}) {
+  const mediaTitle = item?.headline || title
+  const mediaMeta = item?.timestamp ? formatRelativeTime(item.timestamp) : 'Live sync'
+  const hasMedia = Boolean(item?.imageUrl || item?.videoUrl)
+
+  return (
+    <article className={`spotlight-panel is-${theme}${compact ? ' is-compact' : ''}`}>
+      <div className="spotlight-media-shell">
+        <MediaAsset
+          imageUrl={item?.imageUrl}
+          videoUrl={item?.videoUrl}
+          alt={mediaTitle}
+          className="spotlight-media"
+          fallback={
+            <div className="spotlight-fallback">
+              <span>{eyebrow}</span>
+              <strong>{mediaTitle}</strong>
+            </div>
+          }
+        />
+        <div className="spotlight-scan" aria-hidden="true" />
+        {!hasMedia ? <div className="spotlight-grid-overlay" aria-hidden="true" /> : null}
+      </div>
+
+      <div className="spotlight-copy">
+        <div className="spotlight-meta">
+          <span>{eyebrow}</span>
+          <strong>{mediaMeta}</strong>
+        </div>
+        <h3>{title}</h3>
+        <p>{description}</p>
+
+        {badges.length ? (
+          <div className="spotlight-badge-row">
+            {badges.map((badge) => (
+              <span
+                key={`${badge.label}-${badge.tone || 'neutral'}`}
+                className={`pill${badge.tone ? ` is-${badge.tone}` : ' is-neutral'}`}
+              >
+                {badge.label}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {stats.length ? (
+          <div className="spotlight-stat-grid">
+            {stats.map((stat) => (
+              <div key={stat.label} className="spotlight-stat-card">
+                <span className="strip-label">{stat.label}</span>
+                <strong>{stat.value}</strong>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+    </article>
+  )
+}
+
+function AmbientMediaBackdrop({ route, currentUser, siteMedia }) {
+  const loginBackgroundVideoUrl = siteMedia?.loginBackgroundVideoUrl || ''
+  const loginBackgroundImages = [
+    siteMedia?.loginBackgroundPrimaryUrl || '',
+    siteMedia?.loginBackgroundSecondaryUrl || '',
+  ]
+    .filter(Boolean)
+    .map((src, index) => ({
+      src,
+      className:
+        index === 0
+          ? 'ambient-backdrop-image-primary'
+          : 'ambient-backdrop-image-secondary',
+    }))
+  const workspaceBackgroundVideoUrl = siteMedia?.workspaceBackgroundVideoUrl || ''
+  const workspaceBackgroundImages = [
+    siteMedia?.workspaceBackgroundPrimaryUrl || '',
+    siteMedia?.workspaceBackgroundSecondaryUrl || '',
+  ]
+    .filter(Boolean)
+    .map((src, index) => ({
+      src,
+      className:
+        index === 0
+          ? 'ambient-backdrop-image-primary'
+          : 'ambient-backdrop-image-secondary',
+    }))
+
+  const variant = currentUser
+    ? route === '/settings'
+      ? 'settings'
+      : 'workspace'
+    : route === '/login'
+      ? 'login'
+    : route === '/signup'
+      ? 'signup'
+    : route === '/products'
+      ? 'products'
+    : route === '/about'
+        ? 'about'
+        : 'home'
+
+  const authSurfaceVideos = [
+    {
+      src: loginBackgroundVideoUrl || stockMedia.loginBackgroundVideo,
+      className: 'ambient-video-primary ambient-video-login',
+      preload: 'auto',
+    },
+  ]
+  const workspaceSurfaceVideos = workspaceBackgroundVideoUrl
+    ? [
+        {
+          src: workspaceBackgroundVideoUrl,
+          className: 'ambient-video-primary',
+          preload: 'auto',
+        },
+      ]
+    : [
+        {
+          src: stockMedia.ambientBackgroundVideo,
+          className: 'ambient-video-primary',
+          preload: 'auto',
+        },
+        {
+          src: stockMedia.tapDripVideo,
+          className: 'ambient-video-accent ambient-video-accent-right',
+          preload: 'metadata',
+        },
+      ]
+
+  const mediaByVariant = {
+    home: {
+      videos: [
+        {
+          src: stockMedia.ambientBackgroundVideo,
+          className: 'ambient-video-primary',
+          preload: 'auto',
+        },
+        {
+          src: stockMedia.pipeBurstVideo,
+          className: 'ambient-video-accent ambient-video-accent-right',
+          preload: 'metadata',
+        },
+      ],
+      images: [
+        {
+          src: stockMedia.tiledWallLeakImage,
+          title: 'Water escaping behind tiled surfaces',
+        },
+        {
+          src: stockMedia.pipeLeakImage,
+          title: 'Pressurized pipe leakage in the field',
+        },
+      ],
+    },
+    login: {
+      videos: authSurfaceVideos,
+      backdropImages: loginBackgroundImages,
+      images: [],
+    },
+    signup: {
+      videos: authSurfaceVideos,
+      backdropImages: loginBackgroundImages,
+      images: [],
+    },
+    about: {
+      videos: [
+        {
+          src: stockMedia.ambientBackgroundVideo,
+          className: 'ambient-video-primary',
+          preload: 'auto',
+        },
+        {
+          src: stockMedia.faucetCloseupVideo,
+          className: 'ambient-video-accent ambient-video-accent-right',
+          preload: 'metadata',
+        },
+      ],
+      backdropImages: [],
+      images: [
+        {
+          src: stockMedia.leakingTapImage,
+          title: 'Tap leakage close-up',
+        },
+        {
+          src: stockMedia.yellowValveImage,
+          title: 'Aging valve hardware',
+        },
+      ],
+    },
+    products: {
+      videos: [
+        {
+          src: stockMedia.ambientBackgroundVideo,
+          className: 'ambient-video-primary',
+          preload: 'auto',
+        },
+        {
+          src: stockMedia.pipeBurstVideo,
+          className: 'ambient-video-accent ambient-video-accent-left',
+          preload: 'metadata',
+        },
+      ],
+      backdropImages: [],
+      images: [
+        {
+          src: stockMedia.brickDrainLeakImage,
+          title: 'Wall-mounted drainpipe leak',
+        },
+        {
+          src: stockMedia.pipeLeakImage,
+          title: 'Pipe network monitoring',
+        },
+      ],
+    },
+    workspace: {
+      videos: workspaceSurfaceVideos,
+      backdropImages: workspaceBackgroundImages,
+      images: [
+        {
+          src: stockMedia.tiledWallLeakImage,
+          title: 'Surface leak investigation',
+        },
+      ],
+    },
+    settings: {
+      videos: workspaceSurfaceVideos,
+      backdropImages: workspaceBackgroundImages,
+      images: [
+        {
+          src: stockMedia.yellowValveImage,
+          title: 'Secure valve and access control view',
+        },
+      ],
+    },
+  }
+
+  const activeMedia = mediaByVariant[variant]
+
+  return (
+    <div
+      className={`ambient-backdrop is-${variant}${activeMedia.backdropImages?.length ? ' has-background-images' : ''}`}
+      aria-hidden="true"
+    >
+      {(activeMedia.backdropImages || []).map((item, index) => (
+        <div
+          key={`${variant}-background-image-${index}`}
+          className={`ambient-backdrop-image ${item.className}`}
+          style={{ backgroundImage: `url("${item.src}")` }}
+        />
+      ))}
+      {activeMedia.videos.map((item, index) => (
+        <video
+          key={`${variant}-video-${item.src}-${index}`}
+          className={`ambient-video ${item.className}`}
+          src={item.src}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload={item.preload || 'metadata'}
+        />
+      ))}
+      <div className="ambient-backdrop-shade" />
+      <div className="ambient-beam ambient-beam-1" />
+      <div className="ambient-beam ambient-beam-2" />
+      <div className="ambient-orb ambient-orb-1" />
+      <div className="ambient-orb ambient-orb-2" />
+      <div className="ambient-rings" />
+      <div className="ambient-grid" />
+      <div className="ambient-vignette" />
+
+    </div>
+  )
+}
+
 function App() {
-  const [route, setRoute] = useState(() => normalizeRoute(window.location.pathname))
+  const [route, setRoute] = useState(() =>
+    normalizeRoute(stripAppBasePath(window.location.pathname)),
+  )
   const [dashboard, setDashboard] = useState(emptyDashboard)
   const [dashboardState, setDashboardState] = useState('loading')
   const [dashboardMessage, setDashboardMessage] = useState(
@@ -1375,7 +1959,7 @@ function App() {
   const [sensorData, setSensorData] = useState(emptySensorData)
   const [sensorState, setSensorState] = useState('loading')
   const [sensorMessage, setSensorMessage] = useState(
-    'Loading the registered IoT sensors...',
+    'Loading registered systems...',
   )
   const [leakData, setLeakData] = useState(emptyLeakData)
   const [leakState, setLeakState] = useState('loading')
@@ -1387,35 +1971,56 @@ function App() {
   const [siteMessage, setSiteMessage] = useState(
     'Loading site content...',
   )
+  const [siteContentForm, setSiteContentForm] = useState(() =>
+    createSiteContentForm(),
+  )
+  const [siteHighlightsForm, setSiteHighlightsForm] = useState(() =>
+    createSiteHighlightsForm(),
+  )
+  const [siteSectionsDraft, setSiteSectionsDraft] = useState(() =>
+    createSiteSectionsDraft(),
+  )
+  const [siteMediaForm, setSiteMediaForm] = useState(() => createSiteMediaForm())
+  const [siteContentFormState, setSiteContentFormState] = useState('idle')
+  const [siteContentFormMessage, setSiteContentFormMessage] = useState(
+    'Update the live site copy here.',
+  )
+  const [siteEditorDirty, setSiteEditorDirty] = useState(false)
   const [currentUser, setCurrentUser] = useState(null)
   const [sessionState, setSessionState] = useState('loading')
   const [sessionMessage, setSessionMessage] = useState(
     'Checking whether you already have an active session...',
   )
-  const [authMode, setAuthMode] = useState('login')
   const [authState, setAuthState] = useState('idle')
   const [authMessage, setAuthMessage] = useState(
     'Use your account to enter the workspace.',
   )
   const [loginForm, setLoginForm] = useState(initialLoginForm)
   const [signupForm, setSignupForm] = useState(initialSignupForm)
+  const [passwordChangeForm, setPasswordChangeForm] = useState(
+    initialPasswordChangeForm,
+  )
+  const [passwordChangeState, setPasswordChangeState] = useState('idle')
+  const [passwordChangeMessage, setPasswordChangeMessage] = useState(
+    'Use at least 8 characters, confirm the new password, and keep it different from your current password.',
+  )
   const [passwordVisibility, setPasswordVisibility] = useState(
     initialPasswordVisibility,
   )
   const [launchForm, setLaunchForm] = useState(initialLaunchForm)
   const [launchState, setLaunchState] = useState('idle')
   const [launchMessage, setLaunchMessage] = useState(
-    'Launch requests are stored and reflected back into the dashboard.',
+    'Requests submitted here are stored and reflected back into the live operations dashboard.',
   )
   const [managedUserForm, setManagedUserForm] = useState(initialManagedUserForm)
   const [managedUserState, setManagedUserState] = useState('idle')
   const [managedUserMessage, setManagedUserMessage] = useState(
-    'Create another system administrator here. Use at least 8 characters for the password.',
+    'Create or update user and admin accounts here. Use at least 8 characters for any password you set.',
   )
   const [teamMemberForm, setTeamMemberForm] = useState(initialTeamMemberForm)
   const [teamMemberState, setTeamMemberState] = useState('idle')
   const [teamMemberMessage, setTeamMemberMessage] = useState(
-    'Add more team members here and they will appear on the About Us page.',
+    'Add team members here and they will appear on the public response team page.',
   )
   const [teamPhotoUpdateForm, setTeamPhotoUpdateForm] = useState(
     initialTeamPhotoUpdateForm,
@@ -1427,27 +2032,27 @@ function App() {
   const [contactForm, setContactForm] = useState(() => createContactForm())
   const [contactState, setContactState] = useState('idle')
   const [contactMessage, setContactMessage] = useState(
-    'Send a message and it will appear in the administration panel.',
+    'Send an inquiry and it will appear in the admin inbox for follow-up.',
   )
   const [productForm, setProductForm] = useState(initialProductForm)
   const [productFormState, setProductFormState] = useState('idle')
   const [productFormMessage, setProductFormMessage] = useState(
-    'Admins can browse and upload product images or videos from this workspace.',
+    'Upload polished product images or videos from this workspace to strengthen the public platform story.',
   )
   const [announcementForm, setAnnouncementForm] = useState(initialAnnouncementForm)
   const [announcementFormState, setAnnouncementFormState] = useState('idle')
   const [announcementFormMessage, setAnnouncementFormMessage] = useState(
-    'Publish announcements and adverts here. Uploaded images and videos appear on the public website.',
+    'Publish service notices and awareness campaigns here. Uploaded images and videos appear on the public website.',
   )
   const [sensorForm, setSensorForm] = useState(initialSensorForm)
   const [sensorFormState, setSensorFormState] = useState('idle')
   const [sensorFormMessage, setSensorFormMessage] = useState(
-    'Register each IoT sensor once so leak locations come from the sensor record automatically.',
+    'Register each monitoring system once so leak locations and monitoring context come from the system record automatically.',
   )
   const [leakForm, setLeakForm] = useState(initialLeakForm)
   const [leakFormState, setLeakFormState] = useState('idle')
   const [leakFormMessage, setLeakFormMessage] = useState(
-    'Publish the latest IoT leak signal by selecting a registered sensor. The location is pulled automatically.',
+    'Publish the latest leak signal by selecting a registered system. The location is pulled automatically.',
   )
   const [userDirectory, setUserDirectory] = useState([])
   const [userDirectoryState, setUserDirectoryState] = useState('idle')
@@ -1461,15 +2066,11 @@ function App() {
   )
   const [directMessageData, setDirectMessageData] = useState(emptyDirectMessageData)
   const [directMessageState, setDirectMessageState] = useState('idle')
-  const [directMessageStatusMessage, setDirectMessageStatusMessage] = useState(
-    'Sign in to send and receive direct messages.',
+  const [directMessageMessage, setDirectMessageMessage] = useState(
+    'Signed-in messaging appears here.',
   )
-  const [activeConversationId, setActiveConversationId] = useState('')
   const [directMessageForm, setDirectMessageForm] = useState(initialDirectMessageForm)
-  const [directMessageFormState, setDirectMessageFormState] = useState('idle')
-  const [directMessageFormMessage, setDirectMessageFormMessage] = useState(
-    'Choose a conversation to start chatting.',
-  )
+  const [selectedDirectParticipantId, setSelectedDirectParticipantId] = useState('')
   const [focusFilter, setFocusFilter] = useState('All focus areas')
   const [clock, setClock] = useState(Date.now())
   const [activeAdvertIndex, setActiveAdvertIndex] = useState(0)
@@ -1612,7 +2213,7 @@ function App() {
   const refreshSensors = useEffectEvent(async ({ silent = false } = {}) => {
     if (!silent) {
       setSensorState((current) => (current === 'ready' ? 'refreshing' : 'loading'))
-      setSensorMessage('Refreshing the registered IoT sensors...')
+      setSensorMessage('Refreshing registered systems...')
     }
 
     try {
@@ -1621,14 +2222,14 @@ function App() {
       startTransition(() => {
         setSensorData(payload)
         setSensorState('ready')
-        setSensorMessage('Registered sensors synced successfully.')
+        setSensorMessage('Registered systems synced successfully.')
       })
     } catch (error) {
       setSensorState('error')
       setSensorMessage(
         error instanceof Error
           ? error.message
-          : 'Unable to load the registered IoT sensors.',
+          : 'Unable to load registered systems.',
       )
     }
   })
@@ -1674,14 +2275,12 @@ function App() {
             ...(payload.pages || {}),
           },
           adminNote: payload.adminNote || defaultSiteContent.adminNote,
+          media: payload.media || defaultSiteContent.media,
           highlights: {
             ...defaultSiteContent.highlights,
             ...(payload.highlights || {}),
           },
-          sections: {
-            ...defaultSiteContent.sections,
-            ...(payload.sections || {}),
-          },
+          sections: sanitizeSectionGroups(payload.sections),
         })
         setSiteState('ready')
         setSiteMessage('Site content synced successfully.')
@@ -1766,16 +2365,13 @@ function App() {
     }
   })
 
-  const refreshDirectMessageInbox = useEffectEvent(
-    async ({ silent = false, participantId } = {}) => {
+  const refreshDirectMessages = useEffectEvent(
+    async ({ silent = false, participantId = selectedDirectParticipantId } = {}) => {
       if (!currentUser) {
         startTransition(() => {
           setDirectMessageData(emptyDirectMessageData)
           setDirectMessageState('idle')
-          setDirectMessageStatusMessage(
-            'Sign in to send and receive direct messages.',
-          )
-          setActiveConversationId('')
+          setDirectMessageMessage('Sign in to access direct messages.')
         })
         return
       }
@@ -1784,32 +2380,26 @@ function App() {
         setDirectMessageState((current) =>
           current === 'ready' ? 'refreshing' : 'loading',
         )
-        setDirectMessageStatusMessage('Loading direct conversations...')
+        setDirectMessageMessage('Loading direct messages...')
       }
 
       try {
-        const payload = await fetchDirectMessages(participantId || activeConversationId)
+        const payload = await fetchDirectMessages(participantId)
 
         startTransition(() => {
           setDirectMessageData(payload)
           setDirectMessageState('ready')
-          setDirectMessageStatusMessage('Direct conversations synced successfully.')
-
-          if (payload.activeParticipant?.id) {
-            const nextConversationId = String(payload.activeParticipant.id)
-            if (nextConversationId !== activeConversationId) {
-              setActiveConversationId(nextConversationId)
-            }
-          } else if (activeConversationId) {
-            setActiveConversationId('')
-          }
+          setSelectedDirectParticipantId(
+            payload.activeParticipant ? String(payload.activeParticipant.id) : '',
+          )
+          setDirectMessageMessage('Direct messages synced successfully.')
         })
       } catch (error) {
         setDirectMessageState('error')
-        setDirectMessageStatusMessage(
+        setDirectMessageMessage(
           error instanceof Error
             ? error.message
-            : 'Unable to load direct conversations.',
+            : 'Unable to load direct messages.',
         )
       }
     },
@@ -1827,36 +2417,73 @@ function App() {
       refreshSiteContent({ silent }),
     ]
 
-    if (isAdmin) {
-      requests.push(refreshUsers({ silent }), refreshContactInbox({ silent }))
+    if (currentUser) {
+      requests.push(refreshDirectMessages({ silent }))
     }
 
-    if (currentUser) {
-      requests.push(
-        refreshDirectMessageInbox({
-          silent,
-          participantId: activeConversationId,
-        }),
-      )
+    if (isAdmin) {
+      requests.push(refreshUsers({ silent }), refreshContactInbox({ silent }))
     }
 
     await Promise.allSettled(requests)
   })
 
   useEffect(() => {
-    const normalizedRoute = normalizeRoute(window.location.pathname)
-    if (normalizedRoute !== window.location.pathname) {
-      window.history.replaceState({}, '', normalizedRoute)
+    if (siteEditorDirty) {
+      return
     }
+
+    setSiteContentForm(createSiteContentForm(siteContent))
+    setSiteHighlightsForm(createSiteHighlightsForm(siteContent))
+    setSiteSectionsDraft(createSiteSectionsDraft(siteContent))
+    setSiteMediaForm(createSiteMediaForm())
+  }, [siteContent, siteEditorDirty])
+
+  useEffect(() => {
+    const normalizedRoute = normalizeRoute(stripAppBasePath(window.location.pathname))
+    const targetUrl = buildAppUrl(normalizedRoute)
+
+    if (targetUrl !== window.location.pathname) {
+      window.history.replaceState({}, '', targetUrl)
+    }
+
     setRoute(normalizedRoute)
 
     const handlePopState = () => {
-      setRoute(normalizeRoute(window.location.pathname))
+      setRoute(normalizeRoute(stripAppBasePath(window.location.pathname)))
     }
 
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
   }, [])
+
+  useEffect(() => {
+    if (route === '/login') {
+      setAuthState('idle')
+      setAuthMessage('Use your account to enter the workspace.')
+    }
+
+    if (route === '/signup') {
+      setAuthState('idle')
+      setAuthMessage('Create your account to enter the workspace.')
+    }
+  }, [route])
+
+  useEffect(() => {
+    if (currentUser && (route === '/login' || route === '/signup')) {
+      navigate('/')
+    }
+  }, [currentUser, route])
+
+  useEffect(() => {
+    if (sessionState !== 'ready') {
+      return
+    }
+
+    if (!currentUser && route === '/settings') {
+      navigate('/login')
+    }
+  }, [currentUser, route, sessionState])
 
   useEffect(() => {
     refreshLiveSite()
@@ -1945,44 +2572,6 @@ function App() {
   }, [isAdmin])
 
   useEffect(() => {
-    if (!currentUser) {
-      startTransition(() => {
-        setDirectMessageData(emptyDirectMessageData)
-        setDirectMessageState('idle')
-        setDirectMessageStatusMessage('Sign in to send and receive direct messages.')
-        setDirectMessageForm(initialDirectMessageForm)
-        setDirectMessageFormState('idle')
-        setDirectMessageFormMessage('Choose a conversation to start chatting.')
-        setActiveConversationId('')
-      })
-      return
-    }
-
-    refreshDirectMessageInbox({ participantId: activeConversationId })
-  }, [currentUser, activeConversationId])
-
-  useEffect(() => {
-    setActiveConversationId('')
-    setDirectMessageForm(initialDirectMessageForm)
-    setDirectMessageFormState('idle')
-  }, [currentUser?.id])
-
-  useEffect(() => {
-    if (!currentUser) {
-      return undefined
-    }
-
-    const intervalId = window.setInterval(() => {
-      refreshDirectMessageInbox({
-        silent: true,
-        participantId: activeConversationId,
-      })
-    }, 5000)
-
-    return () => window.clearInterval(intervalId)
-  }, [currentUser, activeConversationId])
-
-  useEffect(() => {
     setContactForm((current) => {
       const nextFullName = current.fullName || currentUser?.fullName || ''
       const nextEmail = current.email || currentUser?.email || ''
@@ -1999,62 +2588,104 @@ function App() {
     })
   }, [currentUser])
 
-  function getAdminUrl(path = '/admin/') {
-    const normalizedPath = path.startsWith('/') ? path : `/${path}`
-
-    if (configuredApiBaseUrl) {
-      return `${configuredApiBaseUrl.replace(/\/api$/, '')}${normalizedPath}`
-    }
-
-    if (window.location.port === '5173') {
-      return `${window.location.protocol}//${window.location.hostname}:8000${normalizedPath}`
-    }
-
-    return `${window.location.origin}${normalizedPath}`
-  }
-
-  function openAdminPanel(path = '/admin/') {
-    const targetUrl = getAdminUrl(path)
-    const popup = window.open(targetUrl, '_blank', 'noopener,noreferrer')
-
-    if (!popup) {
-      window.location.assign(targetUrl)
-    }
-  }
-
-  function openDirectConversation(participantId) {
-    const nextConversationId = String(participantId || '')
-    if (!nextConversationId) {
+  useEffect(() => {
+    if (currentUser) {
       return
     }
 
-    setActiveConversationId(nextConversationId)
-    setDirectMessageFormState('idle')
-    setDirectMessageFormMessage('Conversation ready.')
+    setPasswordChangeForm(initialPasswordChangeForm)
+    setPasswordChangeState('idle')
+    setPasswordChangeMessage(
+      'Use at least 8 characters, confirm the new password, and keep it different from your current password.',
+    )
+    setPasswordVisibility((current) => ({
+      ...current,
+      settingsCurrent: false,
+      settingsNext: false,
+      settingsConfirm: false,
+    }))
+  }, [currentUser])
 
-    window.requestAnimationFrame(() => {
+  useEffect(() => {
+    if (!currentUser) {
+      startTransition(() => {
+        setDirectMessageData(emptyDirectMessageData)
+        setDirectMessageState('idle')
+        setDirectMessageMessage('Sign in to access direct messages.')
+        setDirectMessageForm(initialDirectMessageForm)
+        setSelectedDirectParticipantId('')
+      })
+      return
+    }
+
+    refreshDirectMessages()
+  }, [currentUser])
+
+  function openWorkspacePanel(panelId) {
+    navigate('/')
+
+    window.setTimeout(() => {
+      document.getElementById(panelId)?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    }, 80)
+  }
+
+  function openDirectConversation(participantId = '') {
+    navigate('/')
+
+    startTransition(() => {
+      setSelectedDirectParticipantId(participantId ? String(participantId) : '')
+    })
+
+    window.setTimeout(async () => {
       document.getElementById('direct-messages-panel')?.scrollIntoView({
         behavior: 'smooth',
         block: 'start',
       })
-    })
+
+      await refreshDirectMessages({
+        participantId: participantId ? String(participantId) : '',
+      })
+    }, 80)
+  }
+
+  function resetSiteContentEditor() {
+    setSiteContentForm(createSiteContentForm(siteContent))
+    setSiteHighlightsForm(createSiteHighlightsForm(siteContent))
+    setSiteSectionsDraft(createSiteSectionsDraft(siteContent))
+    setSiteMediaForm(createSiteMediaForm())
+    setSiteContentFormState('idle')
+    setSiteContentFormMessage('Content editor reset to the latest live values.')
+    setSiteEditorDirty(false)
   }
 
   function navigate(nextRoute) {
     const normalizedRoute = normalizeRoute(nextRoute)
-    if (window.location.pathname !== normalizedRoute) {
-      window.history.pushState({}, '', normalizedRoute)
+    const targetUrl = buildAppUrl(normalizedRoute)
+
+    if (window.location.pathname !== targetUrl) {
+      window.history.pushState({}, '', targetUrl)
     }
 
     setRoute(normalizedRoute)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  function confirmPanelDeletion(label) {
+    return window.confirm(
+      `Delete ${label}? This will remove it from the website and workspace lists.`,
+    )
+  }
+
   const handleLoginChange = updateFormState(setLoginForm)
   const handleSignupChange = updateFormState(setSignupForm)
+  const handlePasswordChangeInput = updateFormState(setPasswordChangeForm)
   const handleLaunchChange = updateFormState(setLaunchForm)
   const handleManagedUserChange = updateFormState(setManagedUserForm)
   const handleSensorChange = updateFormState(setSensorForm)
+  const handleDirectMessageChange = updateFormState(setDirectMessageForm)
   const togglePasswordVisibility = useEffectEvent((key) => {
     setPasswordVisibility((current) => ({
       ...current,
@@ -2062,7 +2693,6 @@ function App() {
     }))
   })
   const handleContactFormChange = updateFormState(setContactForm)
-  const handleDirectMessageFormChange = updateFormState(setDirectMessageForm)
   const handleLeakChange = updateFormState(setLeakForm)
 
   function handleTeamMemberChange(event) {
@@ -2165,6 +2795,149 @@ function App() {
     }
 
     setAnnouncementForm((current) => ({ ...current, [name]: value }))
+  }
+
+  function handleSiteContentFieldChange(event) {
+    const { name, value } = event.target
+    setSiteEditorDirty(true)
+    setSiteContentForm((current) => ({ ...current, [name]: value }))
+  }
+
+  function handleSiteHighlightFieldChange(page, index, field, value) {
+    setSiteEditorDirty(true)
+    setSiteHighlightsForm((current) => ({
+      ...current,
+      [page]: (current[page] || []).map((item, itemIndex) =>
+        itemIndex === index ? { ...item, [field]: value } : item,
+      ),
+    }))
+  }
+
+  function addSiteHighlight(page) {
+    setSiteEditorDirty(true)
+    setSiteHighlightsForm((current) => ({
+      ...current,
+      [page]: [
+        ...(current[page] || []),
+        {
+          id: `${page}-highlight-new-${Date.now()}`,
+          title: '',
+          description: '',
+          displayOrder: (current[page] || []).length + 1,
+        },
+      ],
+    }))
+  }
+
+  function removeSiteHighlight(page, index) {
+    setSiteEditorDirty(true)
+    setSiteHighlightsForm((current) => ({
+      ...current,
+      [page]: (current[page] || []).filter((_, itemIndex) => itemIndex !== index),
+    }))
+  }
+
+  function handleSiteSectionsDraftChange(event) {
+    setSiteEditorDirty(true)
+    setSiteSectionsDraft(event.target.value)
+  }
+
+  function handleSiteMediaChange(event) {
+    const { name, files, checked, type } = event.target
+    setSiteEditorDirty(true)
+
+    if (type === 'checkbox') {
+      setSiteMediaForm((current) => ({
+        ...current,
+        [name]: checked,
+      }))
+      return
+    }
+
+    const file = files?.[0] || null
+    setSiteMediaForm((current) => ({
+      ...current,
+      [name]: file,
+      [`${name}Name`]: file ? file.name : '',
+      [`clear${name[0].toUpperCase()}${name.slice(1)}`]: false,
+    }))
+  }
+
+  function loadProductIntoForm(product) {
+    setProductForm({
+      id: String(product.id),
+      name: product.name,
+      summary: product.summary || '',
+      description: product.description || '',
+      image: null,
+      imageName: '',
+      video: null,
+      videoName: '',
+      displayOrder: String(product.displayOrder ?? ''),
+    })
+    setProductFormState('idle')
+    setProductFormMessage(`${product.name} loaded into the product editor.`)
+  }
+
+  function loadManagedUserIntoForm(user) {
+    setManagedUserForm({
+      id: String(user.id),
+      fullName: user.fullName,
+      username: user.username,
+      email: user.email,
+      role: user.role,
+      password: '',
+    })
+    setManagedUserState('idle')
+    setManagedUserMessage(
+      `${user.username} loaded into the account editor. Leave the password blank if it should stay unchanged.`,
+    )
+  }
+
+  function loadAnnouncementIntoForm(announcement) {
+    setAnnouncementForm({
+      id: String(announcement.id),
+      kind: announcement.kind,
+      title: announcement.title,
+      message: announcement.message,
+      image: null,
+      imageName: '',
+      video: null,
+      videoName: '',
+      ctaLabel: announcement.ctaLabel || '',
+      ctaLink: announcement.ctaLink || '',
+      displayOrder: String(announcement.displayOrder ?? ''),
+      isActive: announcement.isActive,
+    })
+    setAnnouncementFormState('idle')
+    setAnnouncementFormMessage(`${announcement.title} loaded into the notice editor.`)
+  }
+
+  function loadSensorIntoForm(sensor) {
+    setSensorForm({
+      id: String(sensor.id),
+      sensorCode: sensor.sensorCode,
+      displayName: sensor.displayName,
+      location: sensor.location,
+      description: sensor.description || '',
+      isActive: sensor.isActive,
+    })
+    setSensorFormState('idle')
+    setSensorFormMessage(`${sensor.displayName} loaded into the system editor.`)
+  }
+
+  function loadLeakIntoForm(leakReport) {
+    setLeakForm({
+      id: String(leakReport.id),
+      sensorId: String(leakReport.sensorId || ''),
+      leakageRate: extractLeakRateValue(leakReport.leakageRate),
+      status: leakReport.status,
+      observedAt: formatDateTimeLocalValue(leakReport.observedAt),
+      displayOrder: String(leakReport.displayOrder ?? ''),
+      isActive: leakReport.isActive,
+    })
+    setLeakFormState('idle')
+    setLeakFormMessage(`${leakReport.sensorName} loaded into the telemetry editor.`)
   }
 
   async function handleLoginSubmit(event) {
@@ -2275,10 +3048,80 @@ function App() {
     }
   }
 
-  function handleLogout() {
+  async function handlePasswordChangeSubmit(event) {
+    event.preventDefault()
+
+    if (!currentUser) {
+      setPasswordChangeState('error')
+      setPasswordChangeMessage('Sign in first before changing your password.')
+      return
+    }
+
+    if (passwordChangeForm.newPassword !== passwordChangeForm.confirmPassword) {
+      setPasswordChangeState('error')
+      setPasswordChangeMessage('The new password confirmation does not match.')
+      return
+    }
+
+    if (
+      passwordChangeForm.currentPassword &&
+      passwordChangeForm.currentPassword === passwordChangeForm.newPassword
+    ) {
+      setPasswordChangeState('error')
+      setPasswordChangeMessage(
+        'Choose a password that is different from your current password.',
+      )
+      return
+    }
+
+    const newPasswordError = validateManagedPassword(passwordChangeForm.newPassword)
+    if (newPasswordError) {
+      setPasswordChangeState('error')
+      setPasswordChangeMessage(newPasswordError)
+      return
+    }
+
+    setPasswordChangeState('submitting')
+    setPasswordChangeMessage('Updating your password...')
+
+    try {
+      const response = await changePassword(passwordChangeForm)
+
+      startTransition(() => {
+        setPasswordChangeForm(initialPasswordChangeForm)
+        setPasswordChangeState('success')
+        setPasswordChangeMessage(response.message || 'Password changed successfully.')
+        setPasswordVisibility((current) => ({
+          ...current,
+          settingsCurrent: false,
+          settingsNext: false,
+          settingsConfirm: false,
+        }))
+      })
+
+      await refreshSession({ silent: true })
+    } catch (error) {
+      setPasswordChangeState('error')
+      setPasswordChangeMessage(
+        error instanceof Error ? error.message : 'Unable to update the password.',
+      )
+    }
+  }
+
+  async function handleLogout() {
     setSessionState('refreshing')
     setSessionMessage('Signing out...')
-    window.location.assign('/api/auth/logout/?next=/')
+
+    try {
+      await logoutAccount()
+      navigate('/')
+      await refreshSession({ silent: true })
+    } catch (error) {
+      setSessionState('error')
+      setSessionMessage(
+        error instanceof Error ? error.message : 'Unable to sign out right now.',
+      )
+    }
   }
 
   async function handleLaunchSubmit(event) {
@@ -2310,14 +3153,21 @@ function App() {
   async function handleManagedUserSubmit(event) {
     event.preventDefault()
 
+    const isEditing = Boolean(managedUserForm.id)
     const normalizedUsername = managedUserForm.username.trim().toLowerCase()
     const normalizedEmail = managedUserForm.email.trim().toLowerCase()
     const usernameTaken = userDirectory.some(
-      (user) => user.username.trim().toLowerCase() === normalizedUsername,
+      (user) =>
+        user.username.trim().toLowerCase() === normalizedUsername &&
+        String(user.id) !== managedUserForm.id,
     )
     const emailTaken = userDirectory.some(
-      (user) => user.email.trim().toLowerCase() === normalizedEmail,
+      (user) =>
+        user.email.trim().toLowerCase() === normalizedEmail &&
+        String(user.id) !== managedUserForm.id,
     )
+    const roleLabel =
+      managedUserForm.role === 'admin' ? 'System administrator' : 'User account'
 
     if (usernameTaken) {
       setManagedUserState('error')
@@ -2341,43 +3191,64 @@ function App() {
       return
     }
 
-    const managedPasswordError = validateManagedPassword(managedUserForm.password)
-    if (managedPasswordError) {
+    if (!isEditing && !managedUserForm.password) {
       setManagedUserState('error')
-      setManagedUserMessage(managedPasswordError)
+      setManagedUserMessage('Enter a password before saving the account.')
       return
     }
 
+    if (managedUserForm.password) {
+      const managedPasswordError = validateManagedPassword(managedUserForm.password)
+      if (managedPasswordError) {
+        setManagedUserState('error')
+        setManagedUserMessage(managedPasswordError)
+        return
+      }
+    }
+
     setManagedUserState('submitting')
-    setManagedUserMessage('Checking account details...')
+    setManagedUserMessage(
+      isEditing ? 'Updating the account...' : 'Checking account details...',
+    )
 
     try {
-      const availability = await checkAccountAvailability({
-        username: normalizedUsername,
-        email: normalizedEmail,
-      })
+      if (!isEditing) {
+        const availability = await checkAccountAvailability({
+          username: normalizedUsername,
+          email: normalizedEmail,
+        })
 
-      if (!availability.username.available) {
-        setManagedUserState('error')
-        setManagedUserMessage(
-          `The username "${managedUserForm.username.trim()}" already exists. Use a different username.`,
-        )
-        return
+        if (!availability.username.available) {
+          setManagedUserState('error')
+          setManagedUserMessage(
+            `The username "${managedUserForm.username.trim()}" already exists. Use a different username.`,
+          )
+          return
+        }
+
+        if (!availability.email.available) {
+          setManagedUserState('error')
+          setManagedUserMessage(
+            `The email "${managedUserForm.email.trim()}" is already in use. Use a different email address.`,
+          )
+          return
+        }
       }
 
-      if (!availability.email.available) {
-        setManagedUserState('error')
-        setManagedUserMessage(
-          `The email "${managedUserForm.email.trim()}" is already in use. Use a different email address.`,
-        )
-        return
+      const payload = {
+        username: managedUserForm.username.trim(),
+        fullName: managedUserForm.fullName.trim(),
+        email: managedUserForm.email.trim(),
+        role: managedUserForm.role,
+        ...(managedUserForm.password ? { password: managedUserForm.password } : {}),
       }
 
-      setManagedUserMessage('Creating the account...')
-      const response = await createManagedUser({
-        ...managedUserForm,
-        role: 'admin',
-      })
+      setManagedUserMessage(
+        isEditing ? 'Saving account changes...' : `Creating the ${roleLabel.toLowerCase()}...`,
+      )
+      const response = isEditing
+        ? await updateManagedUser(managedUserForm.id, payload)
+        : await createManagedUser(payload)
 
       startTransition(() => {
         setManagedUserForm(initialManagedUserForm)
@@ -2390,7 +3261,11 @@ function App() {
           ...current.filter((user) => user.id !== response.user.id),
         ])
         setManagedUserState('success')
-        setManagedUserMessage(`System administrator created for ${response.user.username}.`)
+        setManagedUserMessage(
+          isEditing
+            ? `Account updated for ${response.user.username}.`
+            : `${roleLabel} created for ${response.user.username}.`,
+        )
       })
 
       try {
@@ -2398,25 +3273,197 @@ function App() {
       } catch {
         startTransition(() => {
           setManagedUserMessage(
-            `System administrator created for ${response.user.username}. The directory did not refresh automatically, but the account was saved.`,
+            isEditing
+              ? `Account updated for ${response.user.username}. The directory did not refresh automatically, but the changes were saved.`
+              : `${roleLabel} created for ${response.user.username}. The directory did not refresh automatically, but the account was saved.`,
           )
         })
+      }
+
+      if (currentUser && String(currentUser.id) === String(response.user.id)) {
+        try {
+          await refreshSession({ silent: true })
+        } catch {}
       }
     } catch (error) {
       setManagedUserState('error')
       setManagedUserMessage(
         error instanceof Error
           ? error.message
-          : 'Unable to create the account.',
+          : isEditing
+            ? 'Unable to update the account.'
+            : 'Unable to create the account.',
+      )
+    }
+  }
+
+  async function handleDeleteManagedUser(user) {
+    if (!confirmPanelDeletion(`${user.username} account`)) {
+      return
+    }
+
+    setManagedUserState('submitting')
+    setManagedUserMessage(`Deleting ${user.username}...`)
+
+    try {
+      const response = await deleteManagedUser(user.id)
+
+      startTransition(() => {
+        if (managedUserForm.id === String(user.id)) {
+          setManagedUserForm(initialManagedUserForm)
+          setPasswordVisibility((current) => ({
+            ...current,
+            managed: false,
+          }))
+        }
+
+        setUserDirectory((current) =>
+          current.filter((directoryUser) => directoryUser.id !== user.id),
+        )
+        setManagedUserState('success')
+        setManagedUserMessage(response.message || `${user.username} deleted successfully.`)
+      })
+
+      await refreshUsers({ silent: true })
+    } catch (error) {
+      setManagedUserState('error')
+      setManagedUserMessage(
+        error instanceof Error ? error.message : 'Unable to delete the account.',
+      )
+    }
+  }
+
+  async function handleDeleteSiteContent() {
+    if (
+      !window.confirm(
+        'Delete the live site content? This will clear uploaded media, highlights, and custom sections, then restore the default site copy.',
+      )
+    ) {
+      return
+    }
+
+    setSiteContentFormState('submitting')
+    setSiteContentFormMessage('Resetting the live site content...')
+
+    try {
+      const response = await deleteSiteContent()
+
+      startTransition(() => {
+        const normalizedSiteContent = normalizeSiteContentSnapshot(response.siteContent)
+
+        setSiteContent(normalizedSiteContent)
+        setSiteContentForm(createSiteContentForm(normalizedSiteContent))
+        setSiteHighlightsForm(createSiteHighlightsForm(normalizedSiteContent))
+        setSiteSectionsDraft(createSiteSectionsDraft(normalizedSiteContent))
+        setSiteMediaForm(createSiteMediaForm())
+        setSiteContentFormState('success')
+        setSiteContentFormMessage(
+          response.message || 'Site content reset successfully.',
+        )
+        setSiteEditorDirty(false)
+      })
+    } catch (error) {
+      setSiteContentFormState('error')
+      setSiteContentFormMessage(
+        error instanceof Error ? error.message : 'Unable to reset the site content.',
+      )
+    }
+  }
+
+  async function handleSiteContentSubmit(event) {
+    event.preventDefault()
+
+    let parsedSections
+    let sanitizedHighlights
+
+    try {
+      parsedSections = JSON.parse(siteSectionsDraft)
+    } catch {
+      setSiteContentFormState('error')
+      setSiteContentFormMessage('Sections JSON is invalid. Fix it before saving.')
+      return
+    }
+
+    const sanitizedSections = sanitizeSectionGroups(parsedSections)
+
+    try {
+      sanitizedHighlights = prepareSiteHighlightsPayload(siteHighlightsForm)
+    } catch (error) {
+      setSiteContentFormState('error')
+      setSiteContentFormMessage(
+        error instanceof Error ? error.message : 'Site highlights are invalid.',
+      )
+      return
+    }
+
+    setSiteContentFormState('submitting')
+    setSiteContentFormMessage('Saving the live site content...')
+
+    try {
+      const response = await saveSiteContent({
+        brand_name: siteContentForm.brandName,
+        brand_tagline: siteContentForm.brandTagline,
+        home_eyebrow: siteContentForm.homeEyebrow,
+        home_title: siteContentForm.homeTitle,
+        home_description: siteContentForm.homeDescription,
+        about_eyebrow: siteContentForm.aboutEyebrow,
+        about_title: siteContentForm.aboutTitle,
+        about_description: siteContentForm.aboutDescription,
+        products_eyebrow: siteContentForm.productsEyebrow,
+        products_description: siteContentForm.productsDescription,
+        workspace_eyebrow: siteContentForm.workspaceEyebrow,
+        workspace_description_admin: siteContentForm.workspaceDescriptionAdmin,
+        workspace_description_user: siteContentForm.workspaceDescriptionUser,
+        admin_note_title: siteContentForm.adminNoteTitle,
+        admin_note_description: siteContentForm.adminNoteDescription,
+        highlights: sanitizedHighlights,
+        sections: sanitizedSections,
+        loginBackgroundVideo: siteMediaForm.loginBackgroundVideo,
+        clearLoginBackgroundVideo: siteMediaForm.clearLoginBackgroundVideo,
+        loginBackgroundPrimary: siteMediaForm.loginBackgroundPrimary,
+        clearLoginBackgroundPrimary: siteMediaForm.clearLoginBackgroundPrimary,
+        loginBackgroundSecondary: siteMediaForm.loginBackgroundSecondary,
+        clearLoginBackgroundSecondary: siteMediaForm.clearLoginBackgroundSecondary,
+        workspaceBackgroundVideo: siteMediaForm.workspaceBackgroundVideo,
+        clearWorkspaceBackgroundVideo: siteMediaForm.clearWorkspaceBackgroundVideo,
+        workspaceBackgroundPrimary: siteMediaForm.workspaceBackgroundPrimary,
+        clearWorkspaceBackgroundPrimary: siteMediaForm.clearWorkspaceBackgroundPrimary,
+        workspaceBackgroundSecondary: siteMediaForm.workspaceBackgroundSecondary,
+        clearWorkspaceBackgroundSecondary: siteMediaForm.clearWorkspaceBackgroundSecondary,
+      })
+
+      startTransition(() => {
+        const normalizedSiteContent = normalizeSiteContentSnapshot(
+          response.siteContent,
+        )
+
+        setSiteContent(normalizedSiteContent)
+        setSiteContentForm(createSiteContentForm(normalizedSiteContent))
+        setSiteHighlightsForm(createSiteHighlightsForm(normalizedSiteContent))
+        setSiteSectionsDraft(createSiteSectionsDraft(normalizedSiteContent))
+        setSiteMediaForm(createSiteMediaForm())
+        setSiteContentFormState('success')
+        setSiteContentFormMessage(
+          response.message || 'Site content saved successfully.',
+        )
+        setSiteEditorDirty(false)
+      })
+    } catch (error) {
+      setSiteContentFormState('error')
+      setSiteContentFormMessage(
+        error instanceof Error ? error.message : 'Unable to save the site content.',
       )
     }
   }
 
   async function handleSensorSubmit(event) {
     event.preventDefault()
+    const isEditing = Boolean(sensorForm.id)
 
     setSensorFormState('submitting')
-    setSensorFormMessage('Registering the sensor...')
+    setSensorFormMessage(
+      isEditing ? 'Updating the system...' : 'Registering the system...',
+    )
 
     try {
       const response = await createSensor(sensorForm)
@@ -2425,7 +3472,9 @@ function App() {
         setSensorForm(initialSensorForm)
         setSensorFormState('success')
         setSensorFormMessage(
-          `${response.sensor.displayName} is now available for IoT leak telemetry.`,
+          isEditing
+            ? `${response.sensor.displayName} was updated successfully.`
+            : `${response.sensor.displayName} is now available for live leak telemetry.`,
         )
         setLeakForm((current) => ({
           ...current,
@@ -2439,7 +3488,9 @@ function App() {
       setSensorFormMessage(
         error instanceof Error
           ? error.message
-          : 'Unable to register the sensor.',
+          : isEditing
+            ? 'Unable to update the system.'
+            : 'Unable to register the system.',
       )
     }
   }
@@ -2489,14 +3540,8 @@ function App() {
       return
     }
 
-    if (!teamPhotoUpdateForm.photo) {
-      setTeamPhotoUpdateState('error')
-      setTeamPhotoUpdateMessage('Browse for a real profile photo before saving the update.')
-      return
-    }
-
     setTeamPhotoUpdateState('submitting')
-    setTeamPhotoUpdateMessage('Uploading the profile photo...')
+    setTeamPhotoUpdateMessage('Saving the team member update...')
 
     try {
       const response = await updateTeamMember(
@@ -2508,7 +3553,7 @@ function App() {
         setTeamPhotoUpdateForm(initialTeamPhotoUpdateForm)
         setTeamPhotoUpdateState('success')
         setTeamPhotoUpdateMessage(
-          `${response.teamMember.fullName} now has an updated profile photo on the website.`,
+          `${response.teamMember.fullName} was updated successfully.`,
         )
       })
 
@@ -2523,11 +3568,42 @@ function App() {
     }
   }
 
+  async function handleDeleteTeamMember(member) {
+    if (!confirmPanelDeletion(member.fullName)) {
+      return
+    }
+
+    setTeamState('refreshing')
+    setTeamMessage(`Deleting ${member.fullName}...`)
+
+    try {
+      const response = await deleteTeamMember(member.id)
+
+      startTransition(() => {
+        setTeamMessage(response.message || `${member.fullName} deleted successfully.`)
+        if (String(teamPhotoUpdateForm.memberId) === String(member.id)) {
+          setTeamPhotoUpdateForm(initialTeamPhotoUpdateForm)
+          setTeamPhotoUpdateState('idle')
+          setTeamPhotoUpdateMessage('Select another team member to continue editing photos.')
+        }
+      })
+
+      await refreshTeamMembers({ silent: true })
+    } catch (error) {
+      setTeamState('error')
+      setTeamMessage(
+        error instanceof Error
+          ? error.message
+          : 'Unable to delete the team member.',
+      )
+    }
+  }
+
   async function handleContactSubmit(event) {
     event.preventDefault()
 
     setContactState('submitting')
-    setContactMessage('Sending your message...')
+    setContactMessage('Sending your inquiry...')
 
     try {
       const response = await createContactMessage(contactForm)
@@ -2535,7 +3611,7 @@ function App() {
       startTransition(() => {
         setContactForm(createContactForm(currentUser))
         setContactState('success')
-        setContactMessage(response.message || 'Message sent successfully.')
+        setContactMessage(response.message || 'Inquiry sent successfully.')
       })
 
       if (isAdmin) {
@@ -2546,7 +3622,82 @@ function App() {
       setContactMessage(
         error instanceof Error
           ? error.message
-          : 'Unable to send the message.',
+          : 'Unable to send the inquiry.',
+      )
+    }
+  }
+
+  async function handleContactMessageReadToggle(messageItem) {
+    setContactInboxState('refreshing')
+    setContactInboxMessage(
+      messageItem.isRead
+        ? 'Marking the inquiry as unread...'
+        : 'Marking the inquiry as read...',
+    )
+
+    try {
+      const response = await updateContactMessageStatus(
+        messageItem.id,
+        !messageItem.isRead,
+      )
+      await refreshContactInbox({ silent: true })
+      setContactInboxMessage(
+        response.message || 'Contact message updated successfully.',
+      )
+    } catch (error) {
+      setContactInboxState('error')
+      setContactInboxMessage(
+        error instanceof Error
+          ? error.message
+          : 'Unable to update the contact message.',
+      )
+    }
+  }
+
+  async function handleDeleteContactMessage(messageItem) {
+    if (!confirmPanelDeletion(`${messageItem.subject} inquiry`)) {
+      return
+    }
+
+    setContactInboxState('refreshing')
+    setContactInboxMessage(`Deleting ${messageItem.subject}...`)
+
+    try {
+      const response = await deleteContactMessage(messageItem.id)
+      await refreshContactInbox({ silent: true })
+      setContactInboxMessage(
+        response.message || `${messageItem.subject} deleted successfully.`,
+      )
+    } catch (error) {
+      setContactInboxState('error')
+      setContactInboxMessage(
+        error instanceof Error
+          ? error.message
+          : 'Unable to delete the contact message.',
+      )
+    }
+  }
+
+  async function handleLaunchRequestDelete(requestItem) {
+    if (!confirmPanelDeletion(`${requestItem.organization} request`)) {
+      return
+    }
+
+    setDashboardState('refreshing')
+    setDashboardMessage(`Deleting ${requestItem.organization}...`)
+
+    try {
+      const response = await deleteLaunchRequest(requestItem.id)
+      await refreshDashboard({ silent: true })
+      setDashboardMessage(
+        response.message || `${requestItem.organization} deleted successfully.`,
+      )
+    } catch (error) {
+      setDashboardState('error')
+      setDashboardMessage(
+        error instanceof Error
+          ? error.message
+          : 'Unable to delete the launch request.',
       )
     }
   }
@@ -2554,39 +3705,68 @@ function App() {
   async function handleDirectMessageSubmit(event) {
     event.preventDefault()
 
-    if (!activeConversationId) {
-      setDirectMessageFormState('error')
-      setDirectMessageFormMessage('Choose a conversation before sending a message.')
+    const recipientId =
+      selectedDirectParticipantId ||
+      (directMessageData.activeParticipant
+        ? String(directMessageData.activeParticipant.id)
+        : '')
+
+    if (!recipientId) {
+      setDirectMessageState('error')
+      setDirectMessageMessage('Select a conversation before sending a message.')
       return
     }
 
-    setDirectMessageFormState('submitting')
-    setDirectMessageFormMessage('Sending message...')
+    if (!directMessageForm.body.trim()) {
+      setDirectMessageState('error')
+      setDirectMessageMessage('Write a message before sending it.')
+      return
+    }
+
+    setDirectMessageState('refreshing')
+    setDirectMessageMessage('Sending the message...')
 
     try {
-      const response = await sendDirectMessage(
-        activeConversationId,
-        directMessageForm.body,
-      )
+      const response = await sendDirectMessage(recipientId, directMessageForm.body.trim())
 
       startTransition(() => {
         setDirectMessageForm(initialDirectMessageForm)
-        setDirectMessageFormState('success')
-        setDirectMessageFormMessage(
-          response.message || 'Message sent successfully.',
-        )
+        setDirectMessageMessage(response.message || 'Message sent successfully.')
       })
 
-      await refreshDirectMessageInbox({
+      await refreshDirectMessages({
         silent: true,
-        participantId: activeConversationId,
+        participantId: recipientId,
       })
     } catch (error) {
-      setDirectMessageFormState('error')
-      setDirectMessageFormMessage(
+      setDirectMessageState('error')
+      setDirectMessageMessage(
+        error instanceof Error ? error.message : 'Unable to send the message.',
+      )
+    }
+  }
+
+  async function handleDirectMessageDelete(messageItem) {
+    if (!confirmPanelDeletion('this direct message')) {
+      return
+    }
+
+    setDirectMessageState('refreshing')
+    setDirectMessageMessage('Deleting the message...')
+
+    try {
+      const response = await deleteDirectMessage(messageItem.id)
+      await refreshDirectMessages({
+        silent: true,
+        participantId: selectedDirectParticipantId,
+      })
+      setDirectMessageMessage(response.message || 'Direct message deleted successfully.')
+    } catch (error) {
+      setDirectMessageState('error')
+      setDirectMessageMessage(
         error instanceof Error
           ? error.message
-          : 'Unable to send the message.',
+          : 'Unable to delete the direct message.',
       )
     }
   }
@@ -2594,15 +3774,13 @@ function App() {
   async function handleProductSubmit(event) {
     event.preventDefault()
     const formElement = event.currentTarget
-    const existingProduct = productData.products.find(
-      (product) => product.name.trim().toLowerCase() === productForm.name.trim().toLowerCase(),
-    )
+    const isEditing = Boolean(productForm.id)
 
     if (
       !productForm.image &&
       !productForm.video &&
-      !existingProduct?.imageUrl &&
-      !existingProduct?.videoUrl
+      !existingManagedProduct?.imageUrl &&
+      !existingManagedProduct?.videoUrl
     ) {
       setProductFormState('error')
       setProductFormMessage('Upload a real product image or video so it can appear on the website.')
@@ -2619,7 +3797,9 @@ function App() {
         setProductForm(initialProductForm)
         setProductFormState('success')
         setProductFormMessage(
-          `${response.product.name} was saved to the product page.`,
+          isEditing
+            ? `${response.product.name} was updated on the product page.`
+            : `${response.product.name} was saved to the product page.`,
         )
       })
       formElement.reset()
@@ -2633,18 +3813,57 @@ function App() {
     }
   }
 
+  async function handleDeleteProduct(product) {
+    if (!confirmPanelDeletion(product.name)) {
+      return
+    }
+
+    setProductFormState('submitting')
+    setProductFormMessage(`Deleting ${product.name}...`)
+
+    try {
+      const response = await deleteProduct(product.id)
+
+      startTransition(() => {
+        if (String(productForm.id) === String(product.id)) {
+          setProductForm(initialProductForm)
+        }
+        setProductFormState('success')
+        setProductFormMessage(response.message || `${product.name} deleted successfully.`)
+      })
+
+      await refreshProducts({ silent: true })
+    } catch (error) {
+      setProductFormState('error')
+      setProductFormMessage(
+        error instanceof Error ? error.message : 'Unable to delete the product.',
+      )
+    }
+  }
+
   async function handleAnnouncementSubmit(event) {
     event.preventDefault()
     const formElement = event.currentTarget
+    const isEditing = Boolean(announcementForm.id)
+    const currentAnnouncement = announcementData.announcements.find(
+      (item) => String(item.id) === String(announcementForm.id),
+    )
 
-    if (!announcementForm.image && !announcementForm.video) {
+    if (
+      !announcementForm.image &&
+      !announcementForm.video &&
+      !currentAnnouncement?.imageUrl &&
+      !currentAnnouncement?.videoUrl
+    ) {
       setAnnouncementFormState('error')
       setAnnouncementFormMessage('Upload a real image or video before publishing to the website.')
       return
     }
 
     setAnnouncementFormState('submitting')
-    setAnnouncementFormMessage('Publishing the announcement...')
+    setAnnouncementFormMessage(
+      isEditing ? 'Updating the announcement...' : 'Publishing the announcement...',
+    )
 
     try {
       const response = await createAnnouncement(announcementForm)
@@ -2653,7 +3872,9 @@ function App() {
         setAnnouncementForm(initialAnnouncementForm)
         setAnnouncementFormState('success')
         setAnnouncementFormMessage(
-          `${response.announcement.title} is now live on the website.`,
+          isEditing
+            ? `${response.announcement.title} was updated successfully.`
+            : `${response.announcement.title} is now live on the website.`,
         )
       })
       formElement.reset()
@@ -2664,22 +3885,57 @@ function App() {
       setAnnouncementFormMessage(
         error instanceof Error
           ? error.message
-          : 'Unable to publish the announcement.',
+          : isEditing
+            ? 'Unable to update the announcement.'
+            : 'Unable to publish the announcement.',
+      )
+    }
+  }
+
+  async function handleDeleteAnnouncement(item) {
+    if (!confirmPanelDeletion(item.title)) {
+      return
+    }
+
+    setAnnouncementFormState('submitting')
+    setAnnouncementFormMessage(`Deleting ${item.title}...`)
+
+    try {
+      const response = await deleteAnnouncement(item.id)
+
+      startTransition(() => {
+        if (String(announcementForm.id) === String(item.id)) {
+          setAnnouncementForm(initialAnnouncementForm)
+        }
+        setAnnouncementFormState('success')
+        setAnnouncementFormMessage(response.message || `${item.title} deleted successfully.`)
+      })
+
+      await refreshAnnouncements({ silent: true })
+    } catch (error) {
+      setAnnouncementFormState('error')
+      setAnnouncementFormMessage(
+        error instanceof Error
+          ? error.message
+          : 'Unable to delete the announcement.',
       )
     }
   }
 
   async function handleLeakSubmit(event) {
     event.preventDefault()
+    const isEditing = Boolean(leakForm.id)
 
     if (!leakForm.sensorId) {
       setLeakFormState('error')
-      setLeakFormMessage('Select a registered sensor before publishing telemetry.')
+      setLeakFormMessage('Select a registered system before publishing telemetry.')
       return
     }
 
     setLeakFormState('submitting')
-    setLeakFormMessage('Publishing the leak signal...')
+    setLeakFormMessage(
+      isEditing ? 'Updating the leak signal...' : 'Publishing the leak signal...',
+    )
 
     try {
       const response = await createLeakReport({
@@ -2693,7 +3949,9 @@ function App() {
         setLeakForm(initialLeakForm)
         setLeakFormState('success')
         setLeakFormMessage(
-          `${response.leakReport.sensorName} is now visible in the IoT leak feed at ${response.leakReport.location}.`,
+          isEditing
+            ? `${response.leakReport.sensorName} was updated in the IoT leak feed.`
+            : `${response.leakReport.sensorName} is now visible in the IoT leak feed at ${response.leakReport.location}.`,
         )
       })
 
@@ -2703,7 +3961,171 @@ function App() {
       setLeakFormMessage(
         error instanceof Error
           ? error.message
-          : 'Unable to publish the leak signal.',
+          : isEditing
+            ? 'Unable to update the leak signal.'
+            : 'Unable to publish the leak signal.',
+      )
+    }
+  }
+
+  async function handleDeleteLeakReport(report) {
+    if (!confirmPanelDeletion(`${report.sensorName} leak signal`)) {
+      return
+    }
+
+    setLeakFormState('submitting')
+    setLeakFormMessage(`Deleting ${report.sensorName}...`)
+
+    try {
+      const response = await deleteLeakReport(report.id)
+
+      startTransition(() => {
+        if (String(leakForm.id) === String(report.id)) {
+          setLeakForm(initialLeakForm)
+        }
+        setLeakFormState('success')
+        setLeakFormMessage(
+          response.message || `${report.sensorName} deleted successfully.`,
+        )
+      })
+
+      await refreshLeakReports({ silent: true })
+    } catch (error) {
+      setLeakFormState('error')
+      setLeakFormMessage(
+        error instanceof Error
+          ? error.message
+          : 'Unable to delete the leak signal.',
+      )
+    }
+  }
+
+  async function toggleAnnouncementActive(announcement) {
+    setAnnouncementFormState('submitting')
+    setAnnouncementFormMessage(
+      announcement.isActive ? 'Pausing the announcement...' : 'Reactivating the announcement...',
+    )
+
+    try {
+      const response = await createAnnouncement({
+        id: announcement.id,
+        kind: announcement.kind,
+        title: announcement.title,
+        message: announcement.message,
+        ctaLabel: announcement.ctaLabel || '',
+        ctaLink: announcement.ctaLink || '',
+        displayOrder: String(announcement.displayOrder ?? ''),
+        isActive: !announcement.isActive,
+        image: null,
+        video: null,
+      })
+
+      setAnnouncementFormState('success')
+      setAnnouncementFormMessage(
+        response.message || 'Announcement updated successfully.',
+      )
+      await refreshAnnouncements({ silent: true })
+    } catch (error) {
+      setAnnouncementFormState('error')
+      setAnnouncementFormMessage(
+        error instanceof Error
+          ? error.message
+          : 'Unable to update the announcement.',
+      )
+    }
+  }
+
+  async function handleDeleteSensor(sensor) {
+    if (!confirmPanelDeletion(sensor.displayName)) {
+      return
+    }
+
+    setSensorFormState('submitting')
+    setSensorFormMessage(`Deleting ${sensor.displayName}...`)
+
+    try {
+      const response = await deleteSensor(sensor.id)
+
+      startTransition(() => {
+        if (String(sensorForm.id) === String(sensor.id)) {
+          setSensorForm(initialSensorForm)
+        }
+        if (String(leakForm.sensorId) === String(sensor.id)) {
+          setLeakForm((current) => ({
+            ...current,
+            sensorId: '',
+          }))
+        }
+        setSensorFormState('success')
+        setSensorFormMessage(
+          response.message || `${sensor.displayName} deleted successfully.`,
+        )
+      })
+
+      await refreshSensors({ silent: true })
+    } catch (error) {
+      setSensorFormState('error')
+      setSensorFormMessage(
+        error instanceof Error ? error.message : 'Unable to delete the system.',
+      )
+    }
+  }
+
+  async function toggleSensorActive(sensor) {
+    setSensorFormState('submitting')
+    setSensorFormMessage(
+      sensor.isActive ? 'Pausing the system...' : 'Reactivating the system...',
+    )
+
+    try {
+      const response = await createSensor({
+        id: sensor.id,
+        sensorCode: sensor.sensorCode,
+        displayName: sensor.displayName,
+        location: sensor.location,
+        description: sensor.description || '',
+        isActive: !sensor.isActive,
+      })
+
+      setSensorFormState('success')
+      setSensorFormMessage(response.message || 'System updated successfully.')
+      await refreshSensors({ silent: true })
+    } catch (error) {
+      setSensorFormState('error')
+      setSensorFormMessage(
+        error instanceof Error ? error.message : 'Unable to update the system.',
+      )
+    }
+  }
+
+  async function toggleLeakActive(leakReport) {
+    setLeakFormState('submitting')
+    setLeakFormMessage(
+      leakReport.isActive
+        ? 'Archiving the leak signal...'
+        : 'Reactivating the leak signal...',
+    )
+
+    try {
+      const response = await createLeakReport({
+        id: leakReport.id,
+        sensorId: leakReport.sensorId,
+        leakageRate: extractLeakRateValue(leakReport.leakageRate),
+        status: leakReport.status,
+        observedAt: leakReport.observedAt,
+        displayOrder: String(leakReport.displayOrder ?? ''),
+        isActive: !leakReport.isActive,
+      })
+
+      setLeakFormState('success')
+      setLeakFormMessage(response.message || 'Leak signal updated successfully.')
+      await refreshLeakReports({ silent: true })
+    } catch (error) {
+      setLeakFormState('error')
+      setLeakFormMessage(
+        error instanceof Error
+          ? error.message
+          : 'Unable to update the leak signal.',
       )
     }
   }
@@ -2715,6 +4137,21 @@ function App() {
       : dashboard.recentRequests.filter(
           (request) => request.focusArea === deferredFocusFilter,
         )
+  const adminLaunchRequests =
+    deferredFocusFilter === 'All focus areas'
+      ? dashboard.requests || []
+      : (dashboard.requests || []).filter(
+          (request) => request.focusArea === deferredFocusFilter,
+        )
+  const directMessageContacts = directMessageData.contacts || []
+  const activeDirectParticipant =
+    directMessageData.activeParticipant ||
+    directMessageContacts.find(
+      (participant) => String(participant.id) === String(selectedDirectParticipantId),
+    ) ||
+    null
+  const activeDirectMessages = directMessageData.messages || []
+  const systemDirectMessages = directMessageData.systemMessages || []
 
   const homeMetrics = [
     {
@@ -2755,8 +4192,21 @@ function App() {
   )
   const existingManagedProduct =
     productData.products.find(
-      (product) => product.name.trim().toLowerCase() === productForm.name.trim().toLowerCase(),
+      (product) =>
+        productForm.id
+          ? String(product.id) === String(productForm.id)
+          : product.name.trim().toLowerCase() === productForm.name.trim().toLowerCase(),
     ) || null
+  const editingManagedUser =
+    userDirectory.find((user) => String(user.id) === String(managedUserForm.id)) || null
+  const editingAnnouncement =
+    announcementData.announcements.find(
+      (item) => String(item.id) === String(announcementForm.id),
+    ) || null
+  const editingSensor =
+    sensorData.sensors.find((item) => String(item.id) === String(sensorForm.id)) || null
+  const editingLeakReport =
+    leakData.leakReports.find((item) => String(item.id) === String(leakForm.id)) || null
   const liveAnnouncements = announcementData.announcements.filter(
     (item) => item.isActive,
   )
@@ -2797,6 +4247,9 @@ function App() {
       label: 'Current leak status',
     },
   ]
+  const joinedAtLabel = currentUser?.dateJoined
+    ? formatDateValue(currentUser.dateJoined)
+    : 'Unknown'
 
   const selectedSensor =
     sensorData.sensors.find(
@@ -2904,12 +4357,12 @@ function App() {
     error: 'Error',
   }[leakState]
 
-  const siteBadge = {
-    loading: 'Loading',
-    refreshing: 'Refreshing',
-    ready: 'Live',
+  const siteContentFormBadge = {
+    idle: siteEditorDirty ? 'Draft' : 'Ready',
+    submitting: 'Saving',
+    success: 'Saved',
     error: 'Error',
-  }[siteState]
+  }[siteContentFormState]
 
   const inboxBadge = {
     idle: 'Idle',
@@ -2918,7 +4371,6 @@ function App() {
     ready: 'Live',
     error: 'Error',
   }[contactInboxState]
-
   const directMessageBadge = {
     idle: 'Idle',
     loading: 'Loading',
@@ -2926,31 +4378,163 @@ function App() {
     ready: 'Live',
     error: 'Error',
   }[directMessageState]
+  const passwordChangeBadge = {
+    idle: 'Ready',
+    submitting: 'Updating',
+    success: 'Updated',
+    error: 'Review',
+  }[passwordChangeState]
+  const accountOverviewMetrics = [
+    {
+      value: currentUser ? formatStatusLabel(currentUser.role) : 'Guest',
+      label: 'Access level',
+    },
+    {
+      value: sessionBadge,
+      label: 'Session health',
+    },
+    {
+      value: isAdmin
+        ? String(contactInbox.summary.unreadMessages).padStart(2, '0')
+        : String(leakData.summary.activeLeaks).padStart(2, '0'),
+      label: isAdmin ? 'Unread inbox messages' : 'Visible leak alerts',
+    },
+  ]
+  const siteMediaEntries = [
+    {
+      key: 'loginBackgroundVideo',
+      clearKey: 'clearLoginBackgroundVideo',
+      label: 'Login and signup background video',
+      accept: browserSupportedVideoAccept,
+      currentUrl: siteContent.media?.loginBackgroundVideoUrl || '',
+      type: 'video',
+    },
+    {
+      key: 'loginBackgroundPrimary',
+      clearKey: 'clearLoginBackgroundPrimary',
+      label: 'Login and signup primary image',
+      accept: 'image/*',
+      currentUrl: siteContent.media?.loginBackgroundPrimaryUrl || '',
+      type: 'image',
+    },
+    {
+      key: 'loginBackgroundSecondary',
+      clearKey: 'clearLoginBackgroundSecondary',
+      label: 'Login and signup secondary image',
+      accept: 'image/*',
+      currentUrl: siteContent.media?.loginBackgroundSecondaryUrl || '',
+      type: 'image',
+    },
+    {
+      key: 'workspaceBackgroundVideo',
+      clearKey: 'clearWorkspaceBackgroundVideo',
+      label: 'Workspace and settings background video',
+      accept: browserSupportedVideoAccept,
+      currentUrl: siteContent.media?.workspaceBackgroundVideoUrl || '',
+      type: 'video',
+    },
+    {
+      key: 'workspaceBackgroundPrimary',
+      clearKey: 'clearWorkspaceBackgroundPrimary',
+      label: 'Workspace and settings primary image',
+      accept: 'image/*',
+      currentUrl: siteContent.media?.workspaceBackgroundPrimaryUrl || '',
+      type: 'image',
+    },
+    {
+      key: 'workspaceBackgroundSecondary',
+      clearKey: 'clearWorkspaceBackgroundSecondary',
+      label: 'Workspace and settings secondary image',
+      accept: 'image/*',
+      currentUrl: siteContent.media?.workspaceBackgroundSecondaryUrl || '',
+      type: 'image',
+    },
+  ]
 
-  const brand = siteContent.brand || defaultSiteContent.brand
-  const homePage = siteContent.pages?.home || defaultSiteContent.pages.home
-  const aboutPage = siteContent.pages?.about || defaultSiteContent.pages.about
-  const productsPage =
+  const rawBrand = siteContent.brand || defaultSiteContent.brand
+  const rawHomePage = siteContent.pages?.home || defaultSiteContent.pages.home
+  const rawAboutPage = siteContent.pages?.about || defaultSiteContent.pages.about
+  const rawProductsPage =
     siteContent.pages?.products || defaultSiteContent.pages.products
-  const workspacePage =
+  const rawWorkspacePage =
     siteContent.pages?.workspace || defaultSiteContent.pages.workspace
 
-  const homeHighlights =
-    siteContent.highlights?.home?.length
-      ? siteContent.highlights.home
-      : defaultSiteContent.highlights.home
-  const aboutPageHighlights =
-    siteContent.highlights?.about?.length
-      ? siteContent.highlights.about
-      : defaultSiteContent.highlights.about
-  const productPageHighlights =
-    siteContent.highlights?.products?.length
-      ? siteContent.highlights.products
-      : defaultSiteContent.highlights.products
-  const workspacePageHighlights =
-    siteContent.highlights?.workspace?.length
-      ? siteContent.highlights.workspace
-      : defaultSiteContent.highlights.workspace
+  const brand = {
+    ...rawBrand,
+    tagline: refreshLegacyText(
+      rawBrand.tagline,
+      defaultSiteContent.brand.tagline,
+      'Leak intelligence for pipes, taps, and water networks',
+    ),
+  }
+  const homePage = {
+    ...rawHomePage,
+    eyebrow: refreshLegacyText(
+      rawHomePage.eyebrow,
+      defaultSiteContent.pages.home.eyebrow,
+      'Pipe and tap monitoring',
+    ),
+    title: refreshLegacyText(
+      rawHomePage.title,
+      defaultSiteContent.pages.home.title,
+      'Detect pipe and tap leakages early, respond faster, and protect every water line.',
+    ),
+    description: refreshLegacyText(
+      rawHomePage.description,
+      defaultSiteContent.pages.home.description,
+      'Aqual Sentinel turns leak signals, field visuals, response priorities, and public communication into one live command surface for modern water operations.',
+    ),
+  }
+  const aboutPage = {
+    ...rawAboutPage,
+    eyebrow: refreshLegacyText(
+      rawAboutPage.eyebrow,
+      defaultSiteContent.pages.about.eyebrow,
+      'Response team',
+    ),
+    title: refreshLegacyText(
+      rawAboutPage.title,
+      defaultSiteContent.pages.about.title,
+      'Meet the engineers, operators, and responders behind the leak intelligence network.',
+    ),
+    description: refreshLegacyText(
+      rawAboutPage.description,
+      defaultSiteContent.pages.about.description,
+      'Meet the team coordinating monitoring, field verification, public communication, and response support across the water network.',
+    ),
+  }
+  const productsPage = {
+    ...rawProductsPage,
+    eyebrow: refreshLegacyText(
+      rawProductsPage.eyebrow,
+      defaultSiteContent.pages.products.eyebrow,
+      'Monitoring platform',
+    ),
+    description: refreshLegacyText(
+      rawProductsPage.description,
+      defaultSiteContent.pages.products.description,
+      'Aqual Sentinel combines live telemetry, leak verification, response coordination, and polished public communication in one monitoring platform for water operations teams.',
+    ),
+  }
+  const workspacePage = {
+    ...rawWorkspacePage,
+    eyebrow: refreshLegacyText(
+      rawWorkspacePage.eyebrow,
+      defaultSiteContent.pages.workspace.eyebrow,
+      'Leak detection workspace',
+    ),
+    descriptionAdmin: refreshLegacyText(
+      rawWorkspacePage.descriptionAdmin,
+      defaultSiteContent.pages.workspace.descriptionAdmin,
+      'You are signed in as an admin. Monitor leak telemetry, publish updates, register systems, and coordinate response activity from one workspace.',
+    ),
+    descriptionUser: refreshLegacyText(
+      rawWorkspacePage.descriptionUser,
+      defaultSiteContent.pages.workspace.descriptionUser,
+      'You are signed in as a user. Monitor live leak telemetry, review public updates, and follow the current operating picture from one workspace.',
+    ),
+  }
+
   const homeSections =
     siteContent.sections?.home?.length
       ? siteContent.sections.home
@@ -2971,6 +4555,43 @@ function App() {
   const previewTeamMembers = teamData.teamMembers.slice(0, 3)
   const photoReadyCount = teamData.teamMembers.filter((member) => member.photoUrl).length
   const mediaBackedProductCount = productMediaItems.length
+  const curatedVisuals = [
+    {
+      id: 'stock-tile-scene',
+      imageUrl: stockMedia.tiledWallLeakImage,
+      videoUrl: '',
+      title: 'Tiled wall surface leak',
+      caption: 'Surface leak',
+    },
+    {
+      id: 'stock-pipe-scene',
+      imageUrl: stockMedia.pipeLeakImage,
+      videoUrl: '',
+      title: 'Pipe leak in the field',
+      caption: 'Pipeline leak',
+    },
+    {
+      id: 'stock-drain-scene',
+      imageUrl: stockMedia.brickDrainLeakImage,
+      videoUrl: '',
+      title: 'Drainpipe leaking down a wall',
+      caption: 'Infrastructure leak',
+    },
+    {
+      id: 'stock-tap-scene',
+      imageUrl: stockMedia.leakingTapImage,
+      videoUrl: '',
+      title: 'Dripping brass tap close-up',
+      caption: 'Tap leak',
+    },
+    {
+      id: 'stock-valve-scene',
+      imageUrl: stockMedia.yellowValveImage,
+      videoUrl: '',
+      title: 'Aging water valve close-up',
+      caption: 'Valve asset',
+    },
+  ]
   const floatingVisuals = [
     ...advertItems
       .filter((item) => item.imageUrl || item.videoUrl)
@@ -3000,6 +4621,7 @@ function App() {
         title: member.fullName,
         caption: member.title,
       })),
+    ...curatedVisuals,
   ].slice(0, 6)
   const streamVisuals = floatingVisuals.length
     ? [...floatingVisuals, ...floatingVisuals]
@@ -3010,12 +4632,6 @@ function App() {
     teamData.teamMembers[0] ||
     null
   const latestContactMessage = isAdmin ? contactInbox.messages[0] || null : null
-  const activeConversation =
-    directMessageData.activeParticipant ||
-    directMessageData.contacts.find(
-      (contact) => String(contact.id) === String(activeConversationId),
-    ) ||
-    null
   const newsroomItems = [
     ...liveAnnouncements.map((item) => ({
       id: `announcement-${item.id}`,
@@ -3082,6 +4698,32 @@ function App() {
             pillTone: report.status,
           }))
       : []),
+    {
+      id: 'curated-pipe-burst',
+      sectionLabel: 'Field scene',
+      headline: 'Real pipe failure scenes now anchor the public story',
+      summary:
+        'Your selected leak photographs now replace the older stock imagery so the platform mission reads as more real and site-specific.',
+      imageUrl: stockMedia.brickDrainLeakImage,
+      videoUrl: stockMedia.pipeBurstVideo,
+      timestamp: clock,
+      meta: 'Curated background visual',
+      pillLabel: 'Leak scene',
+      pillTone: 'critical',
+    },
+    {
+      id: 'curated-tap-monitoring',
+      sectionLabel: 'Tap leakage',
+      headline: 'Tap leakage visuals now support the conservation message',
+      summary:
+        'Close-up faucet and valve imagery now replace the earlier placeholders across the landing experience.',
+      imageUrl: stockMedia.leakingTapImage,
+      videoUrl: stockMedia.tapDripVideo,
+      timestamp: clock,
+      meta: 'Curated motion visual',
+      pillLabel: 'Monitoring',
+      pillTone: 'live',
+    },
   ].sort((left, right) => getTimeValue(right.timestamp) - getTimeValue(left.timestamp))
   const newsroomSpotlightItems = newsroomItems.filter(
     (item) => item.imageUrl || item.videoUrl,
@@ -3108,6 +4750,151 @@ function App() {
   const homeVisualDescription = floatingVisuals.length
     ? `${pluralize(mediaBackedProductCount, 'product entry')}, ${pluralize(photoReadyCount, 'team portrait')}, and ${pluralize(liveAnnouncements.length, 'public notice')} are feeding the homepage directly from live content.`
     : 'Product media, team portraits, and public notices uploaded from the workspace will appear here automatically.'
+  const homeSpotlightItem =
+    leadStory ||
+    (featuredProduct
+      ? {
+          imageUrl: featuredProduct.imageUrl,
+          videoUrl: featuredProduct.videoUrl,
+          headline: featuredProduct.name,
+          timestamp: featuredProduct.createdAt,
+          pillLabel: 'Product',
+          pillTone: 'neutral',
+        }
+      : null) ||
+    (featuredMember
+      ? {
+          imageUrl: featuredMember.photoUrl,
+          videoUrl: '',
+          headline: featuredMember.fullName,
+          timestamp: featuredMember.createdAt,
+          pillLabel: 'Team',
+          pillTone: 'neutral',
+        }
+      : {
+          imageUrl: stockMedia.tiledWallLeakImage,
+          videoUrl: stockMedia.pipeBurstVideo,
+          headline: 'Leak detection command view',
+          timestamp: clock,
+          pillLabel: 'Curated visual',
+          pillTone: 'critical',
+        })
+  const homeJourneySteps = [
+    {
+      step: '01',
+      title: 'Detect pressure drops and abnormal flow early',
+      description: activeSensors.length
+        ? `${pluralize(activeSensors.length, 'monitoring system')} are ready to surface leak activity across the network.`
+        : 'Register monitoring systems to start streaming pipe and tap health into the live interface.',
+    },
+    {
+      step: '02',
+      title: 'Verify the exact location and latest leak rate',
+      description: latestLeakReport
+        ? `${latestLeakReport.location} is the latest published signal with ${latestLeakReport.leakageRate} recorded.`
+        : 'As soon as telemetry is published, the interface highlights the location, timing, and severity automatically.',
+    },
+    {
+      step: '03',
+      title: 'Coordinate response teams and public updates',
+      description: liveAnnouncements.length
+        ? `${pluralize(liveAnnouncements.length, 'public update')} and ${pluralize(teamData.summary.totalMembers, 'team member')} are already supporting the outward response story.`
+        : 'Use the same workspace to guide field response, publish notices, and keep the public informed.',
+    },
+  ]
+  const homeSpotlightBadges = [
+    {
+      label: homeSpotlightItem?.pillLabel || 'Live visual',
+      tone: homeSpotlightItem?.pillTone || 'live',
+    },
+    {
+      label: homeSpotlightItem?.sectionLabel || 'Monitoring scene',
+      tone: 'neutral',
+    },
+  ]
+  const homeSpotlightStats = [
+    {
+      label: 'Systems',
+      value: String(activeSensors.length).padStart(2, '0'),
+    },
+    {
+      label: 'Active leaks',
+      value: String(leakData.summary.activeLeaks).padStart(2, '0'),
+    },
+    {
+      label: 'Public updates',
+      value: String(liveAnnouncements.length).padStart(2, '0'),
+    },
+  ]
+  const homeCommandHeadline = latestLeakReport
+    ? `${latestLeakReport.location} is now visible as a live leak-response zone.`
+    : 'See leak activity emerge before it becomes a service outage.'
+  const homeCommandDescription = latestLeakReport
+    ? `Telemetry from ${latestLeakReport.sensorName} is the latest verified signal. The homepage now layers motion media, live status, and response context around that operating picture.`
+    : 'The redesigned landing page uses motion-backed visuals and a darker command-center style to make the mission clear at first glance: detect hidden losses, verify leak zones, and guide response teams fast.'
+  const homeCommandStats = [
+    {
+      label: 'Monitoring systems',
+      value: String(activeSensors.length).padStart(2, '0'),
+      note: activeSensors.length
+        ? 'registered across the network'
+        : 'ready for first field connection',
+    },
+    {
+      label: 'Active leak zones',
+      value: String(leakData.summary.activeLeaks).padStart(2, '0'),
+      note: latestLeakReport ? latestLeakReport.location : 'awaiting verified telemetry',
+    },
+    {
+      label: 'Published updates',
+      value: String(liveAnnouncements.length).padStart(2, '0'),
+      note: liveAnnouncements.length
+        ? 'now informing visitors in real time'
+        : 'prepared for the first public notice',
+    },
+    {
+      label: 'Visual scenes',
+      value: String(floatingVisuals.length).padStart(2, '0'),
+      note: 'powering this live homepage experience',
+    },
+  ]
+  const homeSceneCards = [
+    {
+      id: 'scene-pipe-burst',
+      eyebrow: 'Burst pipe scene',
+      title: 'Pressure loss revealed in motion',
+      description: latestLeakReport
+        ? `${latestLeakReport.leakageRate} is the latest recorded leak rate and now sits inside a more visual monitoring story.`
+        : 'Looping field footage now shows the urgency behind early pipe-leak detection before anyone reads the dashboard.',
+      imageUrl: stockMedia.pipeLeakImage,
+      videoUrl: stockMedia.pipeBurstVideo,
+    },
+    {
+      id: 'scene-tap-drip',
+      eyebrow: 'Tap leakage scene',
+      title: 'Small leaks, visible water loss',
+      description:
+        'Close-up tap visuals reinforce the conservation side of the platform and show why persistent drips still need fast action.',
+      imageUrl: stockMedia.leakingTapImage,
+      videoUrl: stockMedia.tapDripVideo,
+    },
+    {
+      id: 'scene-command-desk',
+      eyebrow: homeSpotlightItem?.sectionLabel || 'Response desk',
+      title: homeSpotlightItem?.headline || 'One command view for detection and response',
+      description:
+        homeSpotlightItem?.summary ||
+        'Published media, leak telemetry, and response communication now share one coordinated landing experience.',
+      imageUrl: homeSpotlightItem?.imageUrl || stockMedia.brickDrainLeakImage,
+      videoUrl: homeSpotlightItem?.videoUrl || stockMedia.faucetCloseupVideo,
+    },
+  ]
+  const homeMissionTitle = latestLeakReport
+    ? `${latestLeakReport.location} is the latest verified leak zone.`
+    : 'Follow the leak signal from detection to response.'
+  const homeMissionDescription = latestLeakReport
+    ? `The platform is already tracking ${latestLeakReport.sensorName} and showing the latest leak rate, timeline, and response status in one place.`
+    : 'Use one interface to detect leakages in pipes and taps, verify field conditions, brief responders, and publish outward updates with confidence.'
 
   const homeSignalCardDefaults = [
     {
@@ -3179,8 +4966,8 @@ function App() {
       value: String(leakData.summary.totalSignals).padStart(2, '0'),
       title: `${pluralize(leakData.summary.totalSignals, 'telemetry signal')} stored`,
       description: activeSensors.length
-        ? `${pluralize(activeSensors.length, 'registered sensor')} can already feed the public leak board.`
-        : 'Register sensors from the workspace to connect field data to the site.',
+        ? `${pluralize(activeSensors.length, 'registered system')} can already feed the public leak board.`
+        : 'Register systems from the workspace to connect field data to the site.',
       tone: 'sand',
     },
     {
@@ -3212,24 +4999,6 @@ function App() {
         }
       : card,
   )
-
-  const guestSyncItems = [
-    {
-      label: 'Products',
-      state: productBadge,
-      message: productMessage,
-    },
-    {
-      label: 'Team',
-      state: teamBadge,
-      message: teamMessage,
-    },
-    {
-      label: 'Notices',
-      state: announcementBadge,
-      message: announcementMessage,
-    },
-  ]
 
   const aboutSignalSection = resolveSection(aboutSections, 'about_signals', 'all')
   const aboutSignalCardDefaults = [
@@ -3274,6 +5043,63 @@ function App() {
     'all',
     aboutSignalCardDefaults,
   )
+  const aboutJourneySteps = [
+    {
+      step: '01',
+      title: 'Show the response crew clearly',
+      description: teamData.summary.totalMembers
+        ? `${pluralize(teamData.summary.totalMembers, 'team member')} are currently visible on the public roster.`
+        : 'Publish the first roster entry to introduce the monitoring and response team.',
+    },
+    {
+      step: '02',
+      title: 'Lead with real portraits instead of placeholders',
+      description: photoReadyCount
+        ? `${pluralize(photoReadyCount, 'portrait')} already strengthen the team presence across the site.`
+        : 'Upload profile photos so the About page feels human, trustworthy, and field-ready.',
+    },
+    {
+      step: '03',
+      title: 'Capture questions from the field and the public',
+      description:
+        isAdmin && contactInbox.summary.totalMessages
+          ? `${pluralize(contactInbox.summary.totalMessages, 'message')} have already been stored for review in the workspace inbox.`
+          : 'Public contact messages flow directly into the workspace inbox for follow-up.',
+    },
+  ]
+  const aboutSpotlightItem = featuredMember
+    ? {
+        imageUrl: featuredMember.photoUrl,
+        videoUrl: '',
+        headline: featuredMember.fullName,
+        timestamp: featuredMember.createdAt,
+        pillLabel: featuredMember.title,
+        pillTone: 'neutral',
+      }
+    : {
+        imageUrl: stockMedia.yellowValveImage,
+        videoUrl: stockMedia.tapDripVideo,
+        headline: 'Human response starts with clear field visibility',
+        timestamp: clock,
+        pillLabel: 'Curated visual',
+        pillTone: 'live',
+      }
+  const aboutSpotlightStats = [
+    {
+      label: 'Roster',
+      value: String(teamData.summary.totalMembers).padStart(2, '0'),
+    },
+    {
+      label: 'Portraits',
+      value: String(photoReadyCount).padStart(2, '0'),
+    },
+    {
+      label: 'Inbox',
+      value: isAdmin
+        ? String(contactInbox.summary.totalMessages).padStart(2, '0')
+        : 'Live',
+    },
+  ]
 
   const aboutWorkflowSection = resolveSection(aboutSections, 'about_workflow', 'all')
   const aboutWorkflowItemDefaults = [
@@ -3330,10 +5156,10 @@ function App() {
       key: 'operations_link',
       eyebrow: 'Operations link',
       value: String(activeSensors.length).padStart(2, '0'),
-      title: `${pluralize(activeSensors.length, 'registered sensor')} connected to operations`,
+      title: `${pluralize(activeSensors.length, 'registered system')} connected to operations`,
       description: latestLeakReport
         ? `Latest leak signal is at ${latestLeakReport.location}.`
-        : 'Once field sensors start publishing, the platform story can be anchored in live operations data.',
+        : 'Once field systems start publishing, the platform story can be anchored in live operations data.',
       tone: 'sun',
     },
   ]
@@ -3356,6 +5182,60 @@ function App() {
             }
           : card,
       )
+  const productExperienceSteps = [
+    {
+      step: '01',
+      title: 'Lead with rich visuals and demo-ready media',
+      description: mediaBackedProductCount
+        ? `${pluralize(mediaBackedProductCount, 'product entry')} already carries image or video media on the live site.`
+        : 'Upload product images or short videos so the monitoring platform feels tangible at first glance.',
+    },
+    {
+      step: '02',
+      title: 'Tie every product view back to real telemetry',
+      description: latestLeakReport
+        ? `The latest field signal is coming from ${latestLeakReport.location}, making the story feel operational instead of abstract.`
+        : 'As field systems publish alerts, the product experience starts to feel anchored in live operations.',
+    },
+    {
+      step: '03',
+      title: 'Keep the platform narrative current',
+      description: latestPublicNotice
+        ? `${latestPublicNotice.title} is already reinforcing the platform story on the public site.`
+        : 'Use notices and campaigns to keep the leak-detection story fresh without redesigning the page.',
+    },
+  ]
+  const productSpotlightItem = featuredProduct
+    ? {
+        imageUrl: featuredProduct.imageUrl,
+        videoUrl: featuredProduct.videoUrl,
+        headline: featuredProduct.name,
+        timestamp: featuredProduct.createdAt,
+        pillLabel: featuredProduct.videoUrl ? 'Video media' : 'Product media',
+        pillTone: featuredProduct.videoUrl ? 'live' : 'neutral',
+      }
+    : {
+        imageUrl: stockMedia.brickDrainLeakImage,
+        videoUrl: stockMedia.pipeBurstVideo,
+        headline: 'A platform built for leak visibility and response speed',
+        timestamp: clock,
+        pillLabel: 'Curated visual',
+        pillTone: 'critical',
+      }
+  const productSpotlightStats = [
+    {
+      label: 'Catalog',
+      value: String(productData.summary.totalProducts).padStart(2, '0'),
+    },
+    {
+      label: 'Media ready',
+      value: String(mediaBackedProductCount).padStart(2, '0'),
+    },
+    {
+      label: 'Systems',
+      value: String(activeSensors.length).padStart(2, '0'),
+    },
+  ]
 
   const productJourneySection = resolveSection(productSections, 'product_journey', 'all')
   const productJourneyItemDefaults = [
@@ -3409,12 +5289,62 @@ function App() {
   const workspaceNarrative = isAdmin
     ? `${workspacePage.descriptionAdmin} ${contactInbox.summary.unreadMessages ? `${pluralize(contactInbox.summary.unreadMessages, 'unread message')} ${contactInbox.summary.unreadMessages === 1 ? 'is' : 'are'} waiting in the inbox.` : 'The inbox is currently clear.'}`
     : `${workspacePage.descriptionUser} ${latestLeakReport ? `Latest field signal: ${latestLeakReport.sensorName} at ${latestLeakReport.location}.` : 'The field telemetry board is waiting for the next published signal.'}`
-  const guestBriefTitle = latestPublicNotice
-    ? `${latestPublicNotice.title} is now shaping the public visitor experience.`
-    : `Good ${visitorDayPart}. The public site is live and updating from published content.`
-  const guestBriefDescription = latestRequest
-    ? `Latest launch interest came from ${latestRequest.organization}. As new requests, notices, products, and team updates arrive, this view adjusts automatically for each visitor state.`
-    : 'Guests see live public content, signed-in users see the workspace, and admins see publishing and inbox controls. The same data refreshes automatically without a full page reload.'
+  const workspaceSpotlightItem = latestPublicNotice
+    ? {
+        imageUrl: latestPublicNotice.imageUrl,
+        videoUrl: latestPublicNotice.videoUrl,
+        headline: latestPublicNotice.title,
+        timestamp: latestPublicNotice.createdAt,
+        pillLabel: formatStatusLabel(latestPublicNotice.kind),
+        pillTone: latestPublicNotice.kind,
+      }
+    : {
+        imageUrl: stockMedia.tiledWallLeakImage,
+        videoUrl: stockMedia.faucetCloseupVideo,
+        headline: 'The workspace stays aligned around live leak evidence',
+        timestamp: clock,
+        pillLabel: 'Curated visual',
+        pillTone: 'live',
+      }
+  const workspaceCommandSteps = [
+    {
+      step: '01',
+      title: 'Watch the latest leak signal',
+      description: latestLeakReport
+        ? `${latestLeakReport.sensorName} at ${latestLeakReport.location} is the newest alert on the board.`
+        : 'The workspace is ready to surface the next verified leak signal.',
+    },
+    {
+      step: '02',
+      title: 'Track demand and public-facing updates',
+      description: latestRequest
+        ? `Latest interest came from ${latestRequest.organization}, and outward updates stay in sync with the same data.`
+        : 'Demand, announcements, and telemetry are designed to stay in sync without page reloads.',
+    },
+    {
+      step: '03',
+      title: 'Coordinate teams, systems, and publishing',
+      description: isAdmin
+        ? 'Admins can manage system records, leak telemetry, notices, products, and team presence from the same workspace.'
+        : 'Signed-in users can follow the operating picture while admins keep publishing and response activity moving.',
+    },
+  ]
+  const workspaceSpotlightStats = [
+    {
+      label: 'Active leaks',
+      value: String(leakData.summary.activeLeaks).padStart(2, '0'),
+    },
+    {
+      label: isAdmin ? 'Unread inbox' : 'Inquiry line',
+      value: isAdmin
+        ? String(contactInbox.summary.unreadMessages).padStart(2, '0')
+        : '01',
+    },
+    {
+      label: 'Requests',
+      value: String(dashboard.summary.totalRequests).padStart(2, '0'),
+    },
+  ]
 
   const adminVisitorCardDefaults = [
     {
@@ -3490,13 +5420,12 @@ function App() {
       tone: 'foam',
     },
     {
-      key: 'demand',
-      eyebrow: 'Demand',
-      value: String(dashboard.summary.totalRequests).padStart(2, '0'),
-      title: `${pluralize(dashboard.summary.totalRequests, 'launch request')} captured across the platform`,
-      description: latestRequest
-        ? `Latest request came from ${latestRequest.organization}.`
-        : 'The public launch form is active and will feed this view automatically.',
+      key: 'support',
+      eyebrow: 'Inquiries',
+      value: 'Ready',
+      title: 'Send questions straight to the admin inbox',
+      description:
+        'Use the inquiry form in this workspace whenever you need support, clarification, or a platform update.',
       tone: 'sand',
     },
   ]
@@ -3507,13 +5436,109 @@ function App() {
     isAdmin ? 'admin' : 'user',
     isAdmin ? adminVisitorCardDefaults : userVisitorCardDefaults,
   )
+  const settingsGreeting = currentUser
+    ? `${currentUser.fullName.split(' ')[0]}, keep your account secure and ready.`
+    : 'Manage your account'
+  const settingsNarrative = isAdmin
+    ? `Update your password here, confirm your role, and move back into inbox, content, and operations work without losing the current session. Joined ${joinedAtLabel}.`
+    : `Update your password here, confirm your account details, and return to the live workspace with the same session intact. Joined ${joinedAtLabel}.`
+  const settingsCommandSteps = [
+    {
+      step: '01',
+      title: 'Confirm who is signed in',
+      description: currentUser
+        ? `You are signed in as @${currentUser.username} with ${formatStatusLabel(currentUser.role)} access.`
+        : 'Your current session details appear here as soon as you sign in.',
+    },
+    {
+      step: '02',
+      title: 'Rotate your password safely',
+      description:
+        'Enter your current password, choose a new one with at least 8 characters, and confirm it before saving.',
+    },
+    {
+      step: '03',
+      title: 'Return to work without losing your session',
+      description: isAdmin
+        ? 'Password changes keep this admin session alive so you can move straight back into inbox and publishing work.'
+        : 'Password changes keep this session active so you can return directly to telemetry and support workflows.',
+    },
+  ]
+  const settingsSpotlightItem = latestPublicNotice
+    ? {
+        imageUrl: latestPublicNotice.imageUrl,
+        videoUrl: latestPublicNotice.videoUrl,
+        headline: latestPublicNotice.title,
+        timestamp: latestPublicNotice.createdAt,
+        pillLabel: 'Live system',
+        pillTone: 'live',
+      }
+    : {
+        imageUrl: stockMedia.yellowValveImage,
+        videoUrl: stockMedia.faucetCloseupVideo,
+        headline: 'Secure access keeps the leak workspace reliable',
+        timestamp: clock,
+        pillLabel: 'Secure session',
+        pillTone: 'neutral',
+      }
+  const settingsSpotlightStats = [
+    {
+      label: 'Role',
+      value: currentUser ? formatStatusLabel(currentUser.role) : 'Guest',
+    },
+    {
+      label: 'Session',
+      value: sessionBadge,
+    },
+    {
+      label: isAdmin ? 'Inbox' : 'Alerts',
+      value: isAdmin
+        ? String(contactInbox.summary.unreadMessages).padStart(2, '0')
+        : String(leakData.summary.activeLeaks).padStart(2, '0'),
+    },
+  ]
+  const settingsSecurityCards = [
+    {
+      key: 'identity',
+      eyebrow: 'Identity',
+      value: currentUser ? `@${currentUser.username}` : 'Account',
+      title: 'Your session identity is active right now',
+      description: currentUser
+        ? `Signed in as ${currentUser.fullName} with ${formatStatusLabel(currentUser.role)} access since ${joinedAtLabel}.`
+        : 'Sign in to review your account details.',
+      tone: 'sea',
+    },
+    {
+      key: 'password',
+      eyebrow: 'Password',
+      value: passwordChangeState === 'success' ? 'Updated' : 'Ready',
+      title: 'Change credentials from one place',
+      description:
+        'The settings form updates your password and keeps the current session authenticated so work is not interrupted.',
+      tone: 'foam',
+    },
+    {
+      key: isAdmin ? 'admin_scope' : 'support_flow',
+      eyebrow: isAdmin ? 'Admin scope' : 'Support flow',
+      value: isAdmin
+        ? `${String(userDirectory.length).padStart(2, '0')} users`
+        : `${String(leakData.summary.activeLeaks).padStart(2, '0')} alerts`,
+      title: isAdmin
+        ? 'Admin tools remain one step away'
+        : 'Support and telemetry remain one step away',
+      description: isAdmin
+        ? 'After updating your password, jump straight back into account management, publishing, systems, and inbox review.'
+        : 'After updating your password, return to live alerts or send an inquiry to the administrator without starting over.',
+      tone: 'sand',
+    },
+  ]
   const homeDeskGroupDefaults = [
     {
       id: 'operations',
       sourceType: 'leak_reports',
       label: 'Operations',
       eyebrow: 'Field desk',
-      title: 'Leak telemetry and sensor movement',
+      title: 'Leak telemetry and system activity',
       description: latestLeakReport
         ? `${latestLeakReport.location} is the latest field update.`
         : 'Published leak reports start filling this desk as soon as telemetry is saved.',
@@ -3678,8 +5703,184 @@ function App() {
     return () => window.clearInterval(intervalId)
   }, [rotatingSpotlightItems.length])
 
+  const isAuthRoute = route === '/login' || route === '/signup'
+  const resolvedAuthMode = route === '/signup' ? 'signup' : 'login'
+  const pageView = currentUser
+    ? route === '/settings'
+      ? 'settings'
+      : 'workspace'
+    : route === '/about'
+      ? 'about'
+      : route === '/products'
+        ? 'products'
+        : route === '/settings'
+          ? 'settings'
+          : isAuthRoute
+            ? 'auth'
+            : 'home'
+  const topbarStatusLabel = currentUser
+    ? route === '/settings'
+      ? 'Account settings'
+      : `${formatStatusLabel(currentUser.role)} session`
+    : route === '/products'
+      ? 'Platform showcase'
+      : route === '/about'
+        ? 'Response team'
+        : route === '/signup'
+          ? 'Create access'
+          : route === '/login'
+            ? 'Secure sign in'
+            : 'Public experience'
+
+  const authFormContent =
+    resolvedAuthMode === 'login' ? (
+      <form className="stack-form" onSubmit={handleLoginSubmit}>
+        <div className="form-heading">
+          <h2>Login</h2>
+        </div>
+
+        <label>
+          Username
+          <input
+            name="username"
+            value={loginForm.username}
+            onChange={handleLoginChange}
+            placeholder="Enter your username"
+            required
+          />
+        </label>
+
+        <PasswordField
+          label="Password"
+          name="password"
+          value={loginForm.password}
+          onChange={handleLoginChange}
+          placeholder="Enter your password"
+          visible={passwordVisibility.login}
+          onToggle={() => togglePasswordVisibility('login')}
+          required
+        />
+
+        <label>
+          Sign-in role
+          <select
+            name="role"
+            value={loginForm.role}
+            onChange={handleLoginChange}
+            required
+          >
+            <option value="" disabled>
+              Select role
+            </option>
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
+
+        <button
+          type="submit"
+          disabled={authState === 'submitting' || !loginForm.role}
+        >
+          {authState === 'submitting' ? 'Signing in...' : 'Login'}
+        </button>
+      </form>
+    ) : (
+      <form className="stack-form" onSubmit={handleSignupSubmit}>
+        <div className="form-heading">
+          <h2>Sign up</h2>
+        </div>
+
+        <label>
+          Full name
+          <input
+            name="fullName"
+            value={signupForm.fullName}
+            onChange={handleSignupChange}
+            placeholder="Jane Nalubega"
+            required
+          />
+        </label>
+
+        <label>
+          Username
+          <input
+            name="username"
+            value={signupForm.username}
+            onChange={handleSignupChange}
+            placeholder="janeops"
+            required
+          />
+        </label>
+
+        <label>
+          Email
+          <input
+            name="email"
+            type="email"
+            value={signupForm.email}
+            onChange={handleSignupChange}
+            placeholder="jane@example.com"
+            required
+          />
+        </label>
+
+        <PasswordField
+          label="Password"
+          name="password"
+          value={signupForm.password}
+          onChange={handleSignupChange}
+          placeholder="Use a strong password"
+          visible={passwordVisibility.signup}
+          onToggle={() => togglePasswordVisibility('signup')}
+          required
+        />
+
+        <PasswordField
+          label="Confirm password"
+          name="confirmPassword"
+          value={signupForm.confirmPassword}
+          onChange={handleSignupChange}
+          placeholder="Repeat the password"
+          visible={passwordVisibility.signupConfirm}
+          onToggle={() => togglePasswordVisibility('signupConfirm')}
+          required
+        />
+
+        <label>
+          Account role
+          <select
+            name="role"
+            value={signupForm.role}
+            onChange={handleSignupChange}
+            required
+          >
+            <option value="" disabled>
+              Select role
+            </option>
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
+
+        <button
+          type="submit"
+          disabled={authState === 'submitting' || !signupForm.role}
+        >
+          {authState === 'submitting' ? 'Creating...' : 'Create account'}
+        </button>
+      </form>
+    )
+
   return (
-    <div className="page-shell">
+    <div
+      className={`page-shell${isAuthRoute ? ' is-auth-shell' : ''}`}
+      data-view={pageView}
+    >
+      <AmbientMediaBackdrop
+        route={route}
+        currentUser={currentUser}
+        siteMedia={siteContent.media || defaultSiteContent.media}
+      />
       <div className="mesh mesh-one" />
       <div className="mesh mesh-two" />
       <div className="grain" />
@@ -3693,6 +5894,7 @@ function App() {
             <strong>{brand.name}</strong>
             <span>{brand.tagline}</span>
           </div>
+          <span className="brand-status">{topbarStatusLabel}</span>
         </div>
 
         <div className="nav-cluster">
@@ -3706,6 +5908,11 @@ function App() {
             <RouteButton route={route} target="/about" navigate={navigate}>
               About Us
             </RouteButton>
+            {currentUser ? (
+              <RouteButton route={route} target="/settings" navigate={navigate}>
+                Settings
+              </RouteButton>
+            ) : null}
           </div>
 
           {currentUser ? (
@@ -3723,10 +5930,22 @@ function App() {
               </button>
             </>
           ) : (
-            <>
-              <StatusBadge state={sessionState} label={sessionBadge} />
-              <StatusBadge state={siteState} label={siteBadge} />
-            </>
+            <div className="topbar-actions">
+              <button
+                type="button"
+                className={`secondary-button topbar-auth-button${route === '/login' ? ' is-current' : ''}`}
+                onClick={() => navigate('/login')}
+              >
+                Login
+              </button>
+              <button
+                type="button"
+                className={`secondary-button topbar-auth-button${route === '/signup' ? ' is-current' : ''}`}
+                onClick={() => navigate('/signup')}
+              >
+                Sign up
+              </button>
+            </div>
           )}
         </div>
       </header>
@@ -3738,20 +5957,51 @@ function App() {
             <h1>{aboutPage.title}</h1>
             <p className="hero-text">{aboutPage.description}</p>
 
+            <div className="page-hero-band">
+              <div className="journey-step-grid">
+                {aboutJourneySteps.map((item) => (
+                  <JourneyStepCard
+                    key={item.step}
+                    step={item.step}
+                    title={item.title}
+                    description={item.description}
+                  />
+                ))}
+              </div>
+
+              <SpotlightPanel
+                item={aboutSpotlightItem}
+                eyebrow="Team pulse"
+                title={
+                  featuredMember
+                    ? `${featuredMember.fullName} is shaping the public response presence.`
+                    : 'The roster updates directly from the live team directory.'
+                }
+                description={
+                  featuredMember?.bio ||
+                  'Team profiles, portraits, and contact activity all stay connected to live records so the About page feels current and trustworthy.'
+                }
+                badges={[
+                  {
+                    label: featuredMember?.title || 'Team story',
+                    tone: 'neutral',
+                  },
+                  {
+                    label: teamBadge,
+                    tone: teamState === 'ready' ? 'live' : 'neutral',
+                  },
+                ]}
+                stats={aboutSpotlightStats}
+                theme="foam"
+                compact
+              />
+            </div>
+
             <div className="metric-grid">
               {aboutMetrics.map((metric) => (
                 <article key={metric.label} className="metric-card">
                   <strong>{metric.value}</strong>
                   <span>{metric.label}</span>
-                </article>
-              ))}
-            </div>
-
-            <div className="highlight-grid">
-              {aboutPageHighlights.map((item) => (
-                <article key={item.title} className="panel-card highlight-card">
-                  <h3>{item.title}</h3>
-                  <p>{item.description}</p>
                 </article>
               ))}
             </div>
@@ -3813,8 +6063,8 @@ function App() {
             <article className="panel-card">
               <div className="section-head">
                 <div>
-                  <p className="eyebrow">Contact us</p>
-                  <h2>Send a message to the team</h2>
+                  <p className="eyebrow">Admin inquiries</p>
+                  <h2>Send an inquiry to the admin team</h2>
                 </div>
               </div>
 
@@ -3856,19 +6106,19 @@ function App() {
                 </label>
 
                 <label>
-                  Message
+                  Inquiry
                   <textarea
                     name="message"
                     value={contactForm.message}
                     onChange={handleContactFormChange}
-                    placeholder="Write your message here"
+                    placeholder="Write your inquiry here"
                     rows="5"
                     required
                   />
                 </label>
 
                 <button type="submit" disabled={contactState === 'submitting'}>
-                  {contactState === 'submitting' ? 'Sending...' : 'Send message'}
+                  {contactState === 'submitting' ? 'Sending inquiry...' : 'Send inquiry'}
                 </button>
               </form>
 
@@ -3919,7 +6169,7 @@ function App() {
                   <button
                     type="button"
                     className="secondary-button"
-                    onClick={() => openAdminPanel('/admin/accounts/contactmessage/')}
+                    onClick={() => openWorkspacePanel('contact-inbox-panel')}
                   >
                     Open inbox
                   </button>
@@ -3942,20 +6192,48 @@ function App() {
             <h1>{featuredProduct?.name || 'Aqua Sentinel system'}</h1>
             <p className="hero-text">{featuredProduct?.summary || productsPage.description}</p>
 
+            <div className="page-hero-band">
+              <div className="journey-step-grid">
+                {productExperienceSteps.map((item) => (
+                  <JourneyStepCard
+                    key={item.step}
+                    step={item.step}
+                    title={item.title}
+                    description={item.description}
+                  />
+                ))}
+              </div>
+
+              <SpotlightPanel
+                item={productSpotlightItem}
+                eyebrow="Platform spotlight"
+                title={featuredProduct?.name || 'Aqua Sentinel monitoring platform'}
+                description={
+                  featuredProduct?.description ||
+                  featuredProduct?.summary ||
+                  'The product view now behaves like a polished monitoring showcase, using live media and current content instead of static placeholder copy.'
+                }
+                badges={[
+                  {
+                    label: featuredProduct?.videoUrl ? 'Video ready' : 'Image ready',
+                    tone: featuredProduct?.videoUrl ? 'live' : 'neutral',
+                  },
+                  {
+                    label: productBadge,
+                    tone: productState === 'ready' ? 'live' : 'neutral',
+                  },
+                ]}
+                stats={productSpotlightStats}
+                theme="sun"
+                compact
+              />
+            </div>
+
             <div className="metric-grid">
               {productMetrics.map((metric) => (
                 <article key={metric.label} className="metric-card">
                   <strong>{metric.value}</strong>
                   <span>{metric.label}</span>
-                </article>
-              ))}
-            </div>
-
-            <div className="highlight-grid">
-              {productPageHighlights.map((item) => (
-                <article key={item.title} className="panel-card highlight-card">
-                  <h3>{item.title}</h3>
-                  <p>{item.description}</p>
                 </article>
               ))}
             </div>
@@ -3979,16 +6257,16 @@ function App() {
           <ProductPulseRail
             products={productData.products}
             activeIndex={activeProductRailIndex}
-            eyebrow="Product gallery"
-            title="Published product visuals"
+            eyebrow="Platform visuals"
+            title="Published platform visuals"
             description={
               productMediaItems.length
-                ? `${pluralize(productMediaItems.length, 'product visual')} ${productMediaItems.length === 1 ? 'is' : 'are'} featured here.`
-                : 'Upload product images or videos from the workspace to populate this gallery.'
+                ? `${pluralize(productMediaItems.length, 'platform visual')} ${productMediaItems.length === 1 ? 'is' : 'are'} featured here.`
+                : 'Upload product images or videos from the workspace to populate this visual rail.'
             }
             state={productState}
             badge={productBadge}
-            emptyMessage="No product media has been uploaded yet. Add a product image or video from the workspace to populate this gallery."
+            emptyMessage="No product media has been uploaded yet. Add a product image or video from the workspace to populate this visual rail."
           />
 
           <section className="panel-grid">
@@ -4067,25 +6345,376 @@ function App() {
                   className="secondary-button"
                   onClick={() => navigate('/about')}
                 >
-                  Open About Us
+                  Meet the team
                 </button>
                 <button
                   type="button"
                   className="secondary-button"
                   onClick={() => navigate('/')}
                 >
-                  {currentUser ? 'Open workspace' : 'Back to home'}
+                  {currentUser ? 'Open control workspace' : 'Back to home'}
                 </button>
               </div>
             </article>
           </section>
         </main>
+      ) : route === '/settings' ? (
+        currentUser ? (
+          <main className="page-layout settings-shell">
+            <section className="hero-card settings-hero-card">
+              <p className="eyebrow">Account settings</p>
+              <h1>{settingsGreeting}</h1>
+              <p className="hero-text">{settingsNarrative}</p>
+
+              <div className="page-hero-band">
+                <div className="journey-step-grid">
+                  {settingsCommandSteps.map((item) => (
+                    <JourneyStepCard
+                      key={item.step}
+                      step={item.step}
+                      title={item.title}
+                      description={item.description}
+                    />
+                  ))}
+                </div>
+
+                <SpotlightPanel
+                  item={settingsSpotlightItem}
+                  eyebrow="Security posture"
+                  title="Protect access without breaking momentum"
+                  description={
+                    isAdmin
+                      ? 'Admin access can stay productive and secure at the same time. Rotate the password here, then move straight back into publishing, response, and inbox work.'
+                      : 'Keep this account secure, then return directly to the live monitoring workspace with the same active session.'
+                  }
+                  badges={[
+                    {
+                      label: passwordChangeBadge,
+                      tone:
+                        passwordChangeState === 'success'
+                          ? 'live'
+                          : passwordChangeState === 'error'
+                            ? 'critical'
+                            : 'neutral',
+                    },
+                    {
+                      label: sessionBadge,
+                      tone: sessionState === 'ready' ? 'live' : 'neutral',
+                    },
+                  ]}
+                  stats={settingsSpotlightStats}
+                  theme="foam"
+                  compact
+                />
+              </div>
+
+              <div className="metric-grid">
+                {accountOverviewMetrics.map((metric) => (
+                  <article key={metric.label} className="metric-card">
+                    <strong>{metric.value}</strong>
+                    <span>{metric.label}</span>
+                  </article>
+                ))}
+              </div>
+
+              <div className="system-strip">
+                <div>
+                  <span className="strip-label">Account</span>
+                  <strong>@{currentUser.username}</strong>
+                </div>
+                <div>
+                  <span className="strip-label">Joined</span>
+                  <strong>{joinedAtLabel}</strong>
+                </div>
+                <div>
+                  <span className="strip-label">Kampala time</span>
+                  <strong>{formatClock(clock)}</strong>
+                </div>
+              </div>
+            </section>
+
+            <section className="settings-grid">
+              <article className="panel-card settings-form-card" id="password-settings-panel">
+                <div className="section-head">
+                  <div>
+                    <p className="eyebrow">Password</p>
+                    <h2>Change your password</h2>
+                  </div>
+                  <StatusBadge
+                    state={
+                      passwordChangeState === 'submitting'
+                        ? 'refreshing'
+                        : passwordChangeState === 'success'
+                          ? 'ready'
+                          : passwordChangeState === 'error'
+                            ? 'error'
+                            : 'idle'
+                    }
+                    label={passwordChangeBadge}
+                  />
+                </div>
+
+                <p className="muted-line">
+                  Use your current password to confirm the change. The session stays active after the update.
+                </p>
+
+                <form className="stack-form" onSubmit={handlePasswordChangeSubmit}>
+                  <PasswordField
+                    label="Current password"
+                    name="currentPassword"
+                    value={passwordChangeForm.currentPassword}
+                    onChange={handlePasswordChangeInput}
+                    placeholder="Enter your current password"
+                    visible={passwordVisibility.settingsCurrent}
+                    onToggle={() => togglePasswordVisibility('settingsCurrent')}
+                    required
+                  />
+
+                  <PasswordField
+                    label="New password"
+                    name="newPassword"
+                    value={passwordChangeForm.newPassword}
+                    onChange={handlePasswordChangeInput}
+                    placeholder="Choose a stronger password"
+                    visible={passwordVisibility.settingsNext}
+                    onToggle={() => togglePasswordVisibility('settingsNext')}
+                    required
+                  />
+
+                  <PasswordField
+                    label="Confirm new password"
+                    name="confirmPassword"
+                    value={passwordChangeForm.confirmPassword}
+                    onChange={handlePasswordChangeInput}
+                    placeholder="Repeat the new password"
+                    visible={passwordVisibility.settingsConfirm}
+                    onToggle={() => togglePasswordVisibility('settingsConfirm')}
+                    required
+                  />
+
+                  <div className="inline-note">
+                    <span className="strip-label">Password guidance</span>
+                    <strong>Use at least 8 characters and avoid reusing the current password.</strong>
+                    <p>
+                      Stronger passwords help protect workspace access, publishing rights, and the live monitoring picture.
+                    </p>
+                  </div>
+
+                  <button type="submit" disabled={passwordChangeState === 'submitting'}>
+                    {passwordChangeState === 'submitting'
+                      ? 'Updating password...'
+                      : 'Save new password'}
+                  </button>
+                </form>
+
+                <p className={`form-message is-${passwordChangeState}`}>
+                  {passwordChangeMessage}
+                </p>
+              </article>
+
+              <article className="panel-card settings-summary-card">
+                <div className="section-head">
+                  <div>
+                    <p className="eyebrow">Account overview</p>
+                    <h2>Session and access details</h2>
+                  </div>
+                  <StatusBadge state={sessionState} label={sessionBadge} />
+                </div>
+
+                <div className="account-grid">
+                  <div className="account-card">
+                    <span className="strip-label">Full name</span>
+                    <strong>{currentUser.fullName}</strong>
+                  </div>
+                  <div className="account-card">
+                    <span className="strip-label">Username</span>
+                    <strong>@{currentUser.username}</strong>
+                  </div>
+                  <div className="account-card">
+                    <span className="strip-label">Email</span>
+                    <strong>{currentUser.email}</strong>
+                  </div>
+                  <div className="account-card">
+                    <span className="strip-label">Role</span>
+                    <strong>{formatStatusLabel(currentUser.role)}</strong>
+                  </div>
+                </div>
+
+                <div className="inline-note">
+                  <span className="strip-label">Session note</span>
+                  <strong>{sessionMessage}</strong>
+                  <p>
+                    Password updates use the same authenticated session, so you can continue working immediately after saving.
+                  </p>
+                </div>
+
+                <div className="quick-link-grid">
+                  <article className="quick-link-card">
+                    <span className="strip-label">Workspace</span>
+                    <strong>Return to live operations</strong>
+                    <p>Go back to the main command surface with telemetry, demand, and notices.</p>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => navigate('/')}
+                    >
+                      Open workspace
+                    </button>
+                  </article>
+
+                  <article className="quick-link-card">
+                    <span className="strip-label">{isAdmin ? 'Admin tools' : 'Support'}</span>
+                    <strong>
+                      {isAdmin ? 'Jump straight into inbox and content work' : 'Jump straight into help and monitoring'}
+                    </strong>
+                    <p>
+                      {isAdmin
+                        ? 'Review inquiries, update content, and keep the public site synchronized.'
+                        : 'Open the support form or go back to the live leak view without searching around.'}
+                    </p>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() =>
+                        openWorkspacePanel(isAdmin ? 'contact-inbox-panel' : 'inquiry-panel')
+                      }
+                    >
+                      {isAdmin ? 'Open inbox' : 'Open support'}
+                    </button>
+                  </article>
+
+                  <article className="quick-link-card">
+                    <span className="strip-label">Public pages</span>
+                    <strong>Preview the polished public experience</strong>
+                    <p>Check the current product and team pages after updating your account security.</p>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={() => navigate('/products')}
+                    >
+                      View products
+                    </button>
+                  </article>
+
+                  <article className="quick-link-card">
+                    <span className="strip-label">Session control</span>
+                    <strong>End the current session when needed</strong>
+                    <p>Use sign out here if this device should no longer keep workspace access.</p>
+                    <button
+                      type="button"
+                      className="secondary-button danger-button"
+                      onClick={handleLogout}
+                    >
+                      Logout
+                    </button>
+                  </article>
+                </div>
+              </article>
+            </section>
+
+            <section className="panel-card settings-signal-card">
+              <div className="section-head">
+                <div>
+                  <p className="eyebrow">Security guide</p>
+                  <h2>What this settings area covers</h2>
+                </div>
+              </div>
+
+              <div className="signal-story-grid">
+                {settingsSecurityCards.map((item) => (
+                  <SignalStoryCard
+                    key={item.key}
+                    eyebrow={item.eyebrow}
+                    value={item.value}
+                    title={item.title}
+                    description={item.description}
+                    tone={item.tone}
+                  />
+                ))}
+              </div>
+
+              <ul className="checklist security-tip-list">
+                <li>Use a password that is unique to this account and not shared across other services.</li>
+                <li>Rotate access after onboarding changes, device changes, or any time credentials might have been exposed.</li>
+                <li>{isAdmin ? 'Admin accounts should review inbox and publishing access after updating credentials.' : 'Return to the workspace after updating credentials to confirm your monitoring and support workflow still looks right.'}</li>
+              </ul>
+            </section>
+          </main>
+        ) : (
+          <main className="page-layout auth-only-layout">
+            <section className="auth-card auth-only-card">
+              <div className="form-heading">
+                <h2>Sign in to open settings</h2>
+              </div>
+              <p className="muted-line">
+                Settings are available after authentication so password changes stay tied to the active account.
+              </p>
+              <div className="action-cluster">
+                <button
+                  type="button"
+                  className="secondary-button wide-button"
+                  onClick={() => navigate('/login')}
+                >
+                  Open login
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button wide-button"
+                  onClick={() => navigate('/signup')}
+                >
+                  Create account
+                </button>
+              </div>
+            </section>
+          </main>
+        )
       ) : currentUser ? (
         <main className="page-layout">
           <section className="hero-card">
             <p className="eyebrow">{workspacePage.eyebrow}</p>
             <h1>{workspaceGreeting}</h1>
             <p className="hero-text">{workspaceNarrative}</p>
+
+            <div className="page-hero-band">
+              <div className="journey-step-grid">
+                {workspaceCommandSteps.map((item) => (
+                  <JourneyStepCard
+                    key={item.step}
+                    step={item.step}
+                    title={item.title}
+                    description={item.description}
+                  />
+                ))}
+              </div>
+
+              <SpotlightPanel
+                item={workspaceSpotlightItem}
+                eyebrow="Operations spotlight"
+                title={
+                  latestLeakReport
+                    ? `${latestLeakReport.location} is the latest monitored leak zone.`
+                    : 'The workspace is ready for the next field alert.'
+                }
+                description={
+                  latestLeakReport
+                    ? `${latestLeakReport.leakageRate} is currently recorded from ${latestLeakReport.sensorName}, and the rest of the workspace stays synchronized around that field picture.`
+                    : 'Telemetry, notices, requests, and team workflows are all designed to move together from one professional operations surface.'
+                }
+                badges={[
+                  {
+                    label: formatStatusLabel(leakData.summary.currentStatus),
+                    tone: leakData.summary.currentStatus || 'neutral',
+                  },
+                  {
+                    label: sessionBadge,
+                    tone: sessionState === 'ready' ? 'live' : 'neutral',
+                  },
+                ]}
+                stats={workspaceSpotlightStats}
+                theme="sea"
+                compact
+              />
+            </div>
 
             <div className="metric-grid">
               {workspaceMetrics.map((metric) => (
@@ -4139,216 +6768,121 @@ function App() {
             </div>
           </section>
 
-          <section className="panel-grid" id="direct-messages-panel">
-            <article className="panel-card panel-span">
-              <div className="section-head">
-                <div>
-                  <p className="eyebrow">Direct messages</p>
-                  <h2>
-                    {isAdmin
-                      ? 'Chat with a specific user'
-                      : 'Chat with a system administrator'}
-                  </h2>
+          <section className="panel-grid" id="inquiry-panel">
+            {!isAdmin ? (
+              <article className="panel-card panel-span">
+                <div className="section-head">
+                  <div>
+                    <p className="eyebrow">Admin inquiry</p>
+                    <h2>Send an inquiry to the administrator</h2>
+                  </div>
                 </div>
-                <StatusBadge state={directMessageState} label={directMessageBadge} />
-              </div>
 
-              <div className="inline-note">
-                <span className="strip-label">Chat summary</span>
-                <strong>
-                  {directMessageData.summary.totalContacts} contacts /{' '}
-                  {directMessageData.summary.unreadMessages} unread
-                </strong>
-              </div>
-
-              <div className="dual-grid">
-                <label>
-                  Conversation
-                  <select
-                    value={activeConversationId}
-                    onChange={(event) => openDirectConversation(event.target.value)}
-                    disabled={!directMessageData.contacts.length}
-                  >
-                    <option value="" disabled>
-                      {directMessageData.contacts.length
-                        ? 'Select conversation'
-                        : 'No conversations available'}
-                    </option>
-                    {directMessageData.contacts.map((contact) => (
-                      <option key={contact.id} value={contact.id}>
-                        {contact.fullName} (@{contact.username})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <div className="inline-note role-selection-note">
-                  <span className="strip-label">
-                    {isAdmin ? 'Selected user' : 'Selected admin'}
-                  </span>
-                  <strong>
-                    {activeConversation
-                      ? `${activeConversation.fullName || activeConversation.username}`
-                      : 'No conversation selected yet.'}
-                  </strong>
+                <div className="inline-note">
+                  <span className="strip-label">Inquiry route</span>
+                  <strong>Your inquiry goes straight to the admin inbox for review.</strong>
                   <p>
-                    {activeConversation?.email ||
-                      'Choose a conversation to send a direct message.'}
+                    Use this form for support, access requests, clarifications, or any
+                    platform question that needs administrator follow-up.
                   </p>
                 </div>
-              </div>
 
-              <p className="muted-line">{directMessageStatusMessage}</p>
+                <form className="stack-form" onSubmit={handleContactSubmit}>
+                  <div className="dual-grid">
+                    <label>
+                      Full name
+                      <input
+                        name="fullName"
+                        value={contactForm.fullName}
+                        onChange={handleContactFormChange}
+                        placeholder="Your name"
+                        required
+                      />
+                    </label>
 
-              {directMessageData.contacts.length ? (
-                directMessageData.messages.length ? (
-                  <div className="chat-thread">
-                    {directMessageData.messages.map((messageItem) => (
-                      <article
-                        key={messageItem.id}
-                        className={`chat-message${messageItem.direction === 'outgoing' ? ' is-outgoing' : ''}`}
-                      >
-                        <div className="list-top">
-                          <div>
-                            <strong>
-                              {messageItem.direction === 'outgoing'
-                                ? 'You'
-                                : messageItem.senderDisplayName}
-                            </strong>
-                            <p>@{messageItem.senderUsername}</p>
-                          </div>
-                          <span
-                            className={`pill${messageItem.direction === 'incoming' && !messageItem.isRead ? ' is-unread' : ''}`}
-                          >
-                            {messageItem.direction === 'outgoing'
-                              ? 'Sent'
-                              : messageItem.isRead
-                                ? 'Read'
-                                : 'New'}
-                          </span>
-                        </div>
-                        <p className="message-body">{messageItem.body}</p>
-                        <div className="meta-row">
-                          <span>{formatTimestamp(messageItem.createdAt)}</span>
-                          <span>{formatRelativeTime(messageItem.createdAt)}</span>
-                        </div>
-                      </article>
-                    ))}
+                    <label>
+                      Email
+                      <input
+                        name="email"
+                        type="email"
+                        value={contactForm.email}
+                        onChange={handleContactFormChange}
+                        placeholder="you@example.com"
+                        required
+                      />
+                    </label>
                   </div>
-                ) : (
-                  <div className="empty-state">
-                    No messages yet in this conversation. Send one below to start chatting.
+
+                  <label>
+                    Subject
+                    <input
+                      name="subject"
+                      value={contactForm.subject}
+                      onChange={handleContactFormChange}
+                      placeholder="What do you need help with?"
+                      required
+                    />
+                  </label>
+
+                  <label>
+                    Inquiry
+                    <textarea
+                      name="message"
+                      value={contactForm.message}
+                      onChange={handleContactFormChange}
+                      placeholder="Write your inquiry here"
+                      rows="5"
+                      required
+                    />
+                  </label>
+
+                  <button type="submit" disabled={contactState === 'submitting'}>
+                    {contactState === 'submitting' ? 'Sending inquiry...' : 'Send inquiry'}
+                  </button>
+                </form>
+
+                <p className={`form-message is-${contactState}`}>{contactMessage}</p>
+              </article>
+            ) : (
+              <article className="panel-card panel-span">
+                <div className="section-head">
+                  <div>
+                    <p className="eyebrow">Inquiry inbox</p>
+                    <h2>Review questions coming from the website and workspace</h2>
                   </div>
-                )
-              ) : (
-                <div className="empty-state">
-                  {isAdmin
-                    ? 'No eligible user accounts are available for direct chat yet.'
-                    : 'No system administrator is available for direct chat yet.'}
+                  <StatusBadge state={contactInboxState} label={inboxBadge} />
                 </div>
-              )}
 
-              <form className="stack-form" onSubmit={handleDirectMessageSubmit}>
-                <label>
-                  Message
-                  <textarea
-                    name="body"
-                    value={directMessageForm.body}
-                    onChange={handleDirectMessageFormChange}
-                    placeholder={
-                      activeConversation
-                        ? `Write a message to ${activeConversation.fullName || activeConversation.username}`
-                        : 'Select a conversation before writing your message.'
-                    }
-                    rows="4"
-                    required
-                    disabled={!activeConversation}
-                  />
-                </label>
-
-                <button
-                  type="submit"
-                  disabled={
-                    !activeConversation || directMessageFormState === 'submitting'
-                  }
-                >
-                  {directMessageFormState === 'submitting'
-                    ? 'Sending...'
-                    : 'Send direct message'}
-                </button>
-              </form>
-
-              <p className={`form-message is-${directMessageFormState}`}>
-                {directMessageFormMessage}
-              </p>
-            </article>
-
-            <article className="panel-card">
-              <div className="section-head">
-                <div>
-                  <p className="eyebrow">Conversation list</p>
-                  <h2>
-                    {isAdmin ? 'Users available for chat' : 'Administrators available for chat'}
-                  </h2>
+                <div className="inline-note">
+                  <span className="strip-label">Inbox summary</span>
+                  <strong>
+                    {contactInbox.summary.totalMessages} total inquiries / {contactInbox.summary.unreadMessages} unread
+                  </strong>
                 </div>
-              </div>
 
-              {directMessageData.contacts.length ? (
-                <ul className="list-stack">
-                  {directMessageData.contacts.map((contact) => (
-                    <li key={contact.id} className="list-card">
-                      <div className="list-top">
-                        <div>
-                          <strong>{contact.fullName}</strong>
-                          <p>@{contact.username}</p>
-                        </div>
-                        <span className={`pill is-${contact.role}`}>
-                          {contact.role}
-                        </span>
-                      </div>
-                      <p className="message-body">
-                        {contact.latestMessage || 'No messages yet in this conversation.'}
-                      </p>
-                      <div className="meta-row">
-                        <span>
-                          {contact.unreadMessages
-                            ? `${contact.unreadMessages} unread`
-                            : 'No unread messages'}
-                        </span>
-                        <span>
-                          {contact.latestMessageAt
-                            ? formatRelativeTime(contact.latestMessageAt)
-                            : 'No activity yet'}
-                        </span>
-                      </div>
-                      <div className="action-cluster">
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          onClick={() => openDirectConversation(contact.id)}
-                        >
-                          {String(contact.id) === String(activeConversationId)
-                            ? 'Conversation open'
-                            : 'Open chat'}
-                        </button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="empty-state">
-                  No direct-message contacts available yet.
+                <p className="muted-line">
+                  Inquiries from visitors and signed-in users arrive here for administrator follow-up.
+                </p>
+
+                <div className="action-cluster">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => openWorkspacePanel('contact-inbox-panel')}
+                  >
+                    Open full inbox
+                  </button>
                 </div>
-              )}
-            </article>
+              </article>
+            )}
           </section>
 
           <section className="panel-grid">
             <article className="panel-card">
               <div className="section-head">
                 <div>
-                  <p className="eyebrow">Demand intelligence</p>
-                  <h2>Live launch breakdown</h2>
+                  <p className="eyebrow">Request overview</p>
+                  <h2>Live request and leak snapshot</h2>
                 </div>
                 <StatusBadge state={dashboardState} label={dashboardBadge} />
               </div>
@@ -4376,8 +6910,8 @@ function App() {
             <article className="panel-card">
               <div className="section-head">
                 <div>
-                  <p className="eyebrow">Launch intake</p>
-                  <h2>Save a launch request</h2>
+                  <p className="eyebrow">Request intake</p>
+                  <h2>Submit an operations request</h2>
                 </div>
               </div>
 
@@ -4438,7 +6972,7 @@ function App() {
                 <button type="submit" disabled={launchState === 'submitting'}>
                   {launchState === 'submitting'
                     ? 'Saving request...'
-                    : 'Save launch request'}
+                    : 'Submit request'}
                 </button>
               </form>
 
@@ -4451,7 +6985,7 @@ function App() {
               <div className="section-head">
                 <div>
                   <p className="eyebrow">Recent activity</p>
-                  <h2>Latest launch requests</h2>
+                  <h2>{isAdmin ? 'Launch requests in the system' : 'Latest launch requests'}</h2>
                 </div>
 
                 <label className="compact-field">
@@ -4470,9 +7004,9 @@ function App() {
                 </label>
               </div>
 
-              {visibleRequests.length ? (
+              {(isAdmin ? adminLaunchRequests : visibleRequests).length ? (
                 <ul className="list-stack">
-                  {visibleRequests.map((request) => (
+                  {(isAdmin ? adminLaunchRequests : visibleRequests).map((request) => (
                     <li key={request.id} className="list-card">
                       <div className="list-top">
                         <div>
@@ -4485,6 +7019,17 @@ function App() {
                         <span>{formatTimestamp(request.createdAt)}</span>
                         <span>{formatRelativeTime(request.createdAt)}</span>
                       </div>
+                      {isAdmin ? (
+                        <div className="action-cluster">
+                          <button
+                            type="button"
+                            className="secondary-button danger-button"
+                            onClick={() => handleLaunchRequestDelete(request)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -4523,63 +7068,78 @@ function App() {
                 </div>
               </div>
 
-              <ul className="checklist">
-                {workspacePageHighlights.map((item) => (
-                  <li key={item.title}>
-                    {item.title}
-                    {item.description ? ` ${item.description}` : ''}
-                  </li>
-                ))}
-              </ul>
-
               <div className="footer-note">
                 <span>API endpoint: {launchRequestEndpoint}</span>
                 <span>Storage: {launchRequestStore}</span>
               </div>
 
+              <div className="action-cluster">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => navigate('/settings')}
+                >
+                  Open settings
+                </button>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => openWorkspacePanel('inquiry-panel')}
+                >
+                  {isAdmin ? 'Open inquiries' : 'Open support form'}
+                </button>
+              </div>
+
               {isAdmin ? (
                 <div className="inline-note">
-                  <span className="strip-label">Admin panel</span>
-                  <strong>The workspace and admin panel are connected to the same data.</strong>
+                  <span className="strip-label">Frontend admin</span>
+                  <strong>The full daily admin workflow now runs directly in this workspace.</strong>
                   <div className="dual-grid">
                     <button
                       type="button"
                       className="secondary-button wide-button"
-                      onClick={() => openAdminPanel('/admin/')}
+                      onClick={() => openWorkspacePanel('site-content-panel')}
                     >
-                      Open admin panel
+                      Open content studio
                     </button>
                     <button
                       type="button"
                       className="secondary-button wide-button"
-                      onClick={() => openAdminPanel('/admin/auth/user/')}
+                      onClick={() => openWorkspacePanel('inquiry-panel')}
                     >
-                      Open accounts
+                      Open inquiries
                     </button>
                   </div>
                   <div className="dual-grid">
                     <button
                       type="button"
                       className="secondary-button wide-button"
-                      onClick={() => openAdminPanel('/admin/accounts/sensor/')}
+                      onClick={() => openWorkspacePanel('sensor-registry-panel')}
                     >
-                      Open sensors
+                      Open systems
                     </button>
                     <button
                       type="button"
                       className="secondary-button wide-button"
-                      onClick={() => openAdminPanel('/admin/accounts/contactmessage/')}
+                      onClick={() => openWorkspacePanel('contact-inbox-panel')}
                     >
-                      Open contact messages
+                      Open inbox
                     </button>
                   </div>
                   <div className="dual-grid">
                     <button
                       type="button"
                       className="secondary-button wide-button"
-                      onClick={() => openAdminPanel('/admin/accounts/directmessage/')}
+                      onClick={() => openWorkspacePanel('announcement-panel')}
                     >
-                      Open direct messages
+                      Open announcements
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button wide-button"
+                      onClick={() => openWorkspacePanel('product-management-panel')}
+                    >
+                      Open products
                     </button>
                   </div>
                 </div>
@@ -4591,8 +7151,8 @@ function App() {
             <article className="panel-card">
               <div className="section-head">
                 <div>
-                  <p className="eyebrow">IoT monitoring</p>
-                  <h2>Leakage status board</h2>
+                  <p className="eyebrow">Leak monitoring</p>
+                  <h2>Live leakage status board</h2>
                 </div>
                 <StatusBadge state={leakState} label={leakBadge} />
               </div>
@@ -4623,8 +7183,8 @@ function App() {
             <article className="panel-card">
               <div className="section-head">
                 <div>
-                  <p className="eyebrow">Notice board</p>
-                  <h2>Announcements and adverts on the website</h2>
+                  <p className="eyebrow">Public communications</p>
+                  <h2>Live notices and awareness campaigns</h2>
                 </div>
                 <StatusBadge state={announcementState} label={announcementBadge} />
               </div>
@@ -4649,7 +7209,9 @@ function App() {
                 <div className="section-head">
                   <div>
                     <p className="eyebrow">Admin console</p>
-                    <h2>Create system administrator</h2>
+                    <h2>
+                      {editingManagedUser ? 'Update account access' : 'Create managed account'}
+                    </h2>
                   </div>
                 </div>
 
@@ -4691,35 +7253,84 @@ function App() {
                       />
                     </label>
 
+                    <label>
+                      Account role
+                      <select
+                        name="role"
+                        value={managedUserForm.role}
+                        onChange={handleManagedUserChange}
+                      >
+                        {managedAccountRoleOptions.map((role) => (
+                          <option key={role} value={role}>
+                            {formatStatusLabel(role)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+
+                  <div className="dual-grid">
                     <PasswordField
                       label="Password"
                       name="password"
                       value={managedUserForm.password}
                       onChange={handleManagedUserChange}
-                      placeholder="Enter a strong password"
+                      placeholder={
+                        editingManagedUser
+                          ? 'Leave blank to keep the current password'
+                          : 'Enter a strong password'
+                      }
                       visible={passwordVisibility.managed}
                       onToggle={() => togglePasswordVisibility('managed')}
-                      required
+                      required={!editingManagedUser}
                     />
-                  </div>
 
-                  <div className="inline-note">
-                    <span className="pill is-admin">Admin</span>
-                    <p>
-                      Every account created here becomes a system administrator with
-                      admin workspace access and administrator permissions.
-                    </p>
+                    <div className="inline-note">
+                      <span className={`pill is-${managedUserForm.role}`}>
+                        {formatStatusLabel(managedUserForm.role)}
+                      </span>
+                      <p>
+                        {managedUserForm.role === 'admin'
+                          ? 'Admins can publish content, manage telemetry, and control other accounts from the workspace.'
+                          : 'Users can sign in, review live workspace information, and send inquiries to administrators.'}
+                      </p>
+                    </div>
                   </div>
 
                   <p className="muted-line">
-                    Managed administrator accounts accept practical passwords with a minimum of 8 characters.
+                    Managed accounts accept practical passwords with a minimum of 8 characters. Editing an existing account leaves its password unchanged unless you enter a new one.
                   </p>
 
-                  <button type="submit" disabled={managedUserState === 'submitting'}>
-                    {managedUserState === 'submitting'
-                      ? 'Creating administrator...'
-                      : 'Create administrator'}
-                  </button>
+                  <div className="action-cluster">
+                    <button type="submit" disabled={managedUserState === 'submitting'}>
+                      {managedUserState === 'submitting'
+                        ? editingManagedUser
+                          ? 'Saving account...'
+                          : 'Creating account...'
+                        : editingManagedUser
+                          ? 'Save account'
+                          : 'Create account'}
+                    </button>
+                    {editingManagedUser ? (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => {
+                          setManagedUserForm(initialManagedUserForm)
+                          setPasswordVisibility((current) => ({
+                            ...current,
+                            managed: false,
+                          }))
+                          setManagedUserState('idle')
+                          setManagedUserMessage(
+                            'Create or update user and admin accounts here. Use at least 8 characters for any password you set.',
+                          )
+                        }}
+                      >
+                        Clear editor
+                      </button>
+                    ) : null}
+                  </div>
                 </form>
 
                 <p className={`form-message is-${managedUserState}`}>
@@ -4753,17 +7364,36 @@ function App() {
                           <span>{user.email}</span>
                           <span>Joined {formatTimestamp(user.dateJoined)}</span>
                         </div>
+                        <div className="meta-row">
+                          <span>{user.isActive ? 'Active account' : 'Inactive account'}</span>
+                          <span>
+                            {currentUser && user.id === currentUser.id
+                              ? 'Current session'
+                              : 'Managed account'}
+                          </span>
+                        </div>
                         {user.role === 'user' ? (
-                          <div className="action-cluster">
-                            <button
-                              type="button"
-                              className="secondary-button"
-                              onClick={() => openDirectConversation(user.id)}
-                            >
-                              Message user
-                            </button>
-                          </div>
+                          <p className="muted-line">
+                            This account can send inquiries to administrators from the workspace.
+                          </p>
                         ) : null}
+                        <div className="action-cluster">
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => loadManagedUserIntoForm(user)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button danger-button"
+                            onClick={() => handleDeleteManagedUser(user)}
+                            disabled={currentUser && user.id === currentUser.id}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>
@@ -4775,12 +7405,429 @@ function App() {
           ) : null}
 
           {isAdmin ? (
+            <section className="panel-grid" id="site-content-panel">
+              <article className="panel-card panel-span">
+                <div className="section-head">
+                  <div>
+                    <p className="eyebrow">Content studio</p>
+                    <h2>Edit live website copy</h2>
+                  </div>
+                  <StatusBadge
+                    state={
+                      siteContentFormState === 'submitting'
+                        ? 'refreshing'
+                        : siteContentFormState === 'success'
+                          ? 'ready'
+                          : siteContentFormState === 'error'
+                            ? 'error'
+                            : 'idle'
+                    }
+                    label={siteContentFormBadge}
+                  />
+                </div>
+
+                <p className="muted-line">{siteContentFormMessage}</p>
+
+                <form className="stack-form" onSubmit={handleSiteContentSubmit}>
+                  <div className="dual-grid">
+                    <label>
+                      Brand name
+                      <input
+                        name="brandName"
+                        value={siteContentForm.brandName}
+                        onChange={handleSiteContentFieldChange}
+                        placeholder="Aqual Sentinel"
+                        required
+                      />
+                    </label>
+
+                    <label>
+                      Brand tagline
+                      <input
+                        name="brandTagline"
+                        value={siteContentForm.brandTagline}
+                        onChange={handleSiteContentFieldChange}
+                        placeholder="Water operations, team presence, and admin workflow"
+                        required
+                      />
+                    </label>
+                  </div>
+
+                  <div className="dual-grid">
+                    <label>
+                      Home eyebrow
+                      <input
+                        name="homeEyebrow"
+                        value={siteContentForm.homeEyebrow}
+                        onChange={handleSiteContentFieldChange}
+                        required
+                      />
+                    </label>
+
+                    <label>
+                      Home title
+                      <input
+                        name="homeTitle"
+                        value={siteContentForm.homeTitle}
+                        onChange={handleSiteContentFieldChange}
+                        required
+                      />
+                    </label>
+                  </div>
+
+                  <label>
+                    Home description
+                    <textarea
+                      name="homeDescription"
+                      value={siteContentForm.homeDescription}
+                      onChange={handleSiteContentFieldChange}
+                      rows="4"
+                    />
+                  </label>
+
+                  <div className="dual-grid">
+                    <label>
+                      About eyebrow
+                      <input
+                        name="aboutEyebrow"
+                        value={siteContentForm.aboutEyebrow}
+                        onChange={handleSiteContentFieldChange}
+                        required
+                      />
+                    </label>
+
+                    <label>
+                      About title
+                      <input
+                        name="aboutTitle"
+                        value={siteContentForm.aboutTitle}
+                        onChange={handleSiteContentFieldChange}
+                        required
+                      />
+                    </label>
+                  </div>
+
+                  <label>
+                    About description
+                    <textarea
+                      name="aboutDescription"
+                      value={siteContentForm.aboutDescription}
+                      onChange={handleSiteContentFieldChange}
+                      rows="4"
+                    />
+                  </label>
+
+                  <div className="dual-grid">
+                    <label>
+                      Products eyebrow
+                      <input
+                        name="productsEyebrow"
+                        value={siteContentForm.productsEyebrow}
+                        onChange={handleSiteContentFieldChange}
+                        required
+                      />
+                    </label>
+
+                    <label>
+                      Workspace eyebrow
+                      <input
+                        name="workspaceEyebrow"
+                        value={siteContentForm.workspaceEyebrow}
+                        onChange={handleSiteContentFieldChange}
+                        required
+                      />
+                    </label>
+                  </div>
+
+                  <label>
+                    Products description
+                    <textarea
+                      name="productsDescription"
+                      value={siteContentForm.productsDescription}
+                      onChange={handleSiteContentFieldChange}
+                      rows="4"
+                    />
+                  </label>
+
+                  <div className="dual-grid">
+                    <label>
+                      Admin workspace description
+                      <textarea
+                        name="workspaceDescriptionAdmin"
+                        value={siteContentForm.workspaceDescriptionAdmin}
+                        onChange={handleSiteContentFieldChange}
+                        rows="4"
+                      />
+                    </label>
+
+                    <label>
+                      User workspace description
+                      <textarea
+                        name="workspaceDescriptionUser"
+                        value={siteContentForm.workspaceDescriptionUser}
+                        onChange={handleSiteContentFieldChange}
+                        rows="4"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="dual-grid">
+                    <label>
+                      Admin note title
+                      <input
+                        name="adminNoteTitle"
+                        value={siteContentForm.adminNoteTitle}
+                        onChange={handleSiteContentFieldChange}
+                        required
+                      />
+                    </label>
+
+                    <label>
+                      Admin note description
+                      <textarea
+                        name="adminNoteDescription"
+                        value={siteContentForm.adminNoteDescription}
+                        onChange={handleSiteContentFieldChange}
+                        rows="4"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="section-head compact-section-head">
+                    <div>
+                      <p className="eyebrow">Background media</p>
+                      <h2>Manage login, signup, workspace, and settings visuals</h2>
+                    </div>
+                  </div>
+
+                  <p className="muted-line">
+                    Login uploads are reused on the signup screen, and workspace uploads are reused on the settings screen.
+                  </p>
+
+                  <div className="site-media-grid">
+                    {siteMediaEntries.map((item) => (
+                      <article key={item.key} className="inline-note media-editor-card">
+                        <span className="strip-label">{item.label}</span>
+                        <strong>
+                          {siteMediaForm[`${item.key}Name`] ||
+                            (item.currentUrl ? 'Current asset available' : 'No asset uploaded yet')}
+                        </strong>
+
+                        <label>
+                          Upload replacement
+                          <input
+                            name={item.key}
+                            type="file"
+                            accept={item.accept}
+                            onChange={handleSiteMediaChange}
+                          />
+                        </label>
+
+                        {item.type === 'video' ? (
+                          <p className="muted-line">
+                            Use MP4, WebM, or Ogg. MP4 is the safest choice for browser playback.
+                          </p>
+                        ) : null}
+
+                        <label className="checkbox-row">
+                          <input
+                            name={item.clearKey}
+                            type="checkbox"
+                            checked={siteMediaForm[item.clearKey]}
+                            onChange={handleSiteMediaChange}
+                          />
+                          Remove current asset on save
+                        </label>
+
+                        {item.currentUrl && !siteMediaForm[item.clearKey] ? (
+                          item.type === 'video' ? (
+                            <video
+                              className="site-media-preview"
+                              src={item.currentUrl}
+                              controls
+                              muted
+                              loop
+                              playsInline
+                            />
+                          ) : (
+                            <img
+                              className="site-media-preview"
+                              src={item.currentUrl}
+                              alt={item.label}
+                            />
+                          )
+                        ) : (
+                          <p className="muted-line">
+                            {siteMediaForm[item.clearKey]
+                              ? 'This asset will be removed when you save.'
+                              : 'Upload a new file here if you want to replace the current visual.'}
+                          </p>
+                        )}
+                      </article>
+                    ))}
+                  </div>
+
+                  <div className="section-head compact-section-head">
+                    <div>
+                      <p className="eyebrow">Site highlights</p>
+                      <h2>Manage highlight records from the workspace</h2>
+                    </div>
+                  </div>
+
+                  <div className="highlight-editor-grid">
+                    {sitePageOptions.map((page) => (
+                      <article key={page} className="panel-card nested-panel-card">
+                        <div className="section-head compact-section-head">
+                          <div>
+                            <p className="eyebrow">{sectionEditorLabelByPage[page]}</p>
+                            <h2>
+                              {pluralize(siteHighlightsForm[page]?.length || 0, 'highlight')}
+                            </h2>
+                          </div>
+                        </div>
+
+                        {siteHighlightsForm[page]?.length ? (
+                          <div className="editor-stack">
+                            {siteHighlightsForm[page].map((highlight, index) => (
+                              <article key={highlight.id} className="list-card editor-list-card">
+                                <div className="dual-grid">
+                                  <label>
+                                    Title
+                                    <input
+                                      value={highlight.title}
+                                      onChange={(event) =>
+                                        handleSiteHighlightFieldChange(
+                                          page,
+                                          index,
+                                          'title',
+                                          event.target.value,
+                                        )
+                                      }
+                                      placeholder={`${sectionEditorLabelByPage[page]} highlight title`}
+                                      required
+                                    />
+                                  </label>
+
+                                  <label>
+                                    Display order
+                                    <input
+                                      type="number"
+                                      min="0"
+                                      value={highlight.displayOrder}
+                                      onChange={(event) =>
+                                        handleSiteHighlightFieldChange(
+                                          page,
+                                          index,
+                                          'displayOrder',
+                                          event.target.value,
+                                        )
+                                      }
+                                      placeholder="Leave blank for the next slot"
+                                    />
+                                  </label>
+                                </div>
+
+                                <label>
+                                  Description
+                                  <textarea
+                                    value={highlight.description}
+                                    onChange={(event) =>
+                                      handleSiteHighlightFieldChange(
+                                        page,
+                                        index,
+                                        'description',
+                                        event.target.value,
+                                      )
+                                    }
+                                    rows="3"
+                                    placeholder="Optional highlight description"
+                                  />
+                                </label>
+
+                                <div className="action-cluster">
+                                  <button
+                                    type="button"
+                                    className="secondary-button danger-button"
+                                    onClick={() => removeSiteHighlight(page, index)}
+                                  >
+                                    Remove highlight
+                                  </button>
+                                </div>
+                              </article>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="empty-state">
+                            No highlights are configured for this page yet.
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => addSiteHighlight(page)}
+                        >
+                          Add highlight
+                        </button>
+                      </article>
+                    ))}
+                  </div>
+
+                  <label>
+                    Page sections and cards JSON
+                    <textarea
+                      value={siteSectionsDraft}
+                      onChange={handleSiteSectionsDraftChange}
+                      rows="14"
+                      spellCheck="false"
+                    />
+                  </label>
+
+                  <p className="muted-line">
+                    This editor controls the same page-section and page-section-card records that were previously only practical to manage in Django admin.
+                  </p>
+
+                  <div className="action-cluster">
+                    <button
+                      type="submit"
+                      disabled={siteContentFormState === 'submitting'}
+                    >
+                      {siteContentFormState === 'submitting'
+                        ? 'Saving content...'
+                        : 'Save live site content'}
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={resetSiteContentEditor}
+                    >
+                      Reset to live content
+                    </button>
+                    <button
+                      type="button"
+                      className="secondary-button danger-button"
+                      onClick={handleDeleteSiteContent}
+                      disabled={siteContentFormState === 'submitting'}
+                    >
+                      Delete site content
+                    </button>
+                  </div>
+                </form>
+              </article>
+            </section>
+          ) : null}
+
+          {isAdmin ? (
             <section className="panel-grid">
-              <article className="panel-card">
+              <article className="panel-card" id="announcement-panel">
                 <div className="section-head">
                   <div>
                     <p className="eyebrow">Announcements</p>
-                    <h2>Publish an announcement or advert</h2>
+                    <h2>
+                      {editingAnnouncement
+                        ? 'Update an announcement or advert'
+                        : 'Publish an announcement or advert'}
+                    </h2>
                   </div>
                   <StatusBadge state={announcementState} label={announcementBadge} />
                 </div>
@@ -4846,7 +7893,11 @@ function App() {
                         type="file"
                         accept="image/*"
                         onChange={handleAnnouncementChange}
-                        required={!announcementForm.video}
+                        required={
+                          !announcementForm.video &&
+                          !editingAnnouncement?.imageUrl &&
+                          !editingAnnouncement?.videoUrl
+                        }
                       />
                     </label>
 
@@ -4864,9 +7915,13 @@ function App() {
                       <input
                         name="video"
                         type="file"
-                        accept="video/*"
+                        accept={browserSupportedVideoAccept}
                         onChange={handleAnnouncementChange}
-                        required={!announcementForm.image}
+                        required={
+                          !announcementForm.image &&
+                          !editingAnnouncement?.imageUrl &&
+                          !editingAnnouncement?.videoUrl
+                        }
                       />
                     </label>
 
@@ -4875,6 +7930,7 @@ function App() {
                       <strong>
                         {announcementForm.videoName || 'Browse for an advert video'}
                       </strong>
+                      <p>Use MP4, WebM, or Ogg for reliable browser playback.</p>
                     </div>
                   </div>
 
@@ -4901,23 +7957,95 @@ function App() {
                     </label>
                   </div>
 
-                  <button type="submit" disabled={announcementFormState === 'submitting'}>
-                    {announcementFormState === 'submitting'
-                      ? 'Publishing...'
-                      : 'Publish to website'}
-                  </button>
+                  <div className="inline-note">
+                    <span className="strip-label">Editor mode</span>
+                    <strong>
+                      {editingAnnouncement
+                        ? `Editing ${editingAnnouncement.title}`
+                        : 'Creating a new notice'}
+                    </strong>
+                  </div>
+
+                  <div className="action-cluster">
+                    <button type="submit" disabled={announcementFormState === 'submitting'}>
+                      {announcementFormState === 'submitting'
+                        ? editingAnnouncement
+                          ? 'Updating...'
+                          : 'Publishing...'
+                        : editingAnnouncement
+                          ? 'Update notice'
+                          : 'Publish to website'}
+                    </button>
+                    {editingAnnouncement ? (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => setAnnouncementForm(initialAnnouncementForm)}
+                      >
+                        Clear editor
+                      </button>
+                    ) : null}
+                  </div>
                 </form>
 
                 <p className={`form-message is-${announcementFormState}`}>
                   {announcementFormMessage}
                 </p>
+
+                {announcementData.announcements.length ? (
+                  <ul className="list-stack compact-stack">
+                    {announcementData.announcements.slice(0, 6).map((item) => (
+                      <li key={item.id} className="list-card">
+                        <div className="list-top">
+                          <div>
+                            <strong>{item.title}</strong>
+                            <p>{formatStatusLabel(item.kind)}</p>
+                          </div>
+                          <span className={`pill${item.isActive ? ' is-live' : ' is-neutral'}`}>
+                            {item.isActive ? 'Live' : 'Paused'}
+                          </span>
+                        </div>
+                        <p className="message-body">{item.message}</p>
+                        <div className="meta-row">
+                          <span>Display order {item.displayOrder}</span>
+                          <span>{formatRelativeTime(item.createdAt)}</span>
+                        </div>
+                        <div className="action-cluster">
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => loadAnnouncementIntoForm(item)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => toggleAnnouncementActive(item)}
+                          >
+                            {item.isActive ? 'Pause' : 'Activate'}
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button danger-button"
+                            onClick={() => handleDeleteAnnouncement(item)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </article>
 
-              <article className="panel-card">
+              <article className="panel-card" id="sensor-registry-panel">
                 <div className="section-head">
                   <div>
-                    <p className="eyebrow">Sensor registry</p>
-                    <h2>Register IoT sensors</h2>
+                    <p className="eyebrow">System registry</p>
+                    <h2>
+                      {editingSensor ? 'Update monitoring system' : 'Register monitoring systems'}
+                    </h2>
                   </div>
                   <StatusBadge state={sensorState} label={sensorBadge} />
                 </div>
@@ -4927,7 +8055,7 @@ function App() {
                 <form className="stack-form" onSubmit={handleSensorSubmit}>
                   <div className="dual-grid">
                     <label>
-                      Sensor code
+                      System code
                       <input
                         name="sensorCode"
                         value={sensorForm.sensorCode}
@@ -4938,12 +8066,12 @@ function App() {
                     </label>
 
                     <label>
-                      Sensor name
+                      System name
                       <input
                         name="displayName"
                         value={sensorForm.displayName}
                         onChange={handleSensorChange}
-                        placeholder="North Flow Sensor"
+                        placeholder="North Flow Monitoring System"
                         required
                       />
                     </label>
@@ -4966,16 +8094,40 @@ function App() {
                       name="description"
                       value={sensorForm.description}
                       onChange={handleSensorChange}
-                      placeholder="Optional notes about this sensor."
+                      placeholder="Optional notes about this system."
                       rows="3"
                     />
                   </label>
 
-                  <button type="submit" disabled={sensorFormState === 'submitting'}>
-                    {sensorFormState === 'submitting'
-                      ? 'Registering sensor...'
-                      : 'Register sensor'}
-                  </button>
+                  <div className="inline-note">
+                    <span className="strip-label">Editor mode</span>
+                    <strong>
+                      {editingSensor
+                        ? `Editing ${editingSensor.displayName}`
+                        : 'Creating a new system record'}
+                    </strong>
+                  </div>
+
+                  <div className="action-cluster">
+                    <button type="submit" disabled={sensorFormState === 'submitting'}>
+                      {sensorFormState === 'submitting'
+                        ? editingSensor
+                          ? 'Updating system...'
+                          : 'Registering system...'
+                        : editingSensor
+                          ? 'Update system'
+                          : 'Register system'}
+                    </button>
+                    {editingSensor ? (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => setSensorForm(initialSensorForm)}
+                      >
+                        Clear editor
+                      </button>
+                    ) : null}
+                  </div>
                 </form>
 
                 <p className={`form-message is-${sensorFormState}`}>
@@ -4984,7 +8136,7 @@ function App() {
 
                 {sensorData.sensors.length ? (
                   <ul className="list-stack compact-stack">
-                    {sensorData.sensors.slice(0, 4).map((sensor) => (
+                    {sensorData.sensors.slice(0, 8).map((sensor) => (
                       <li key={sensor.id} className="list-card">
                         <div className="list-top">
                           <div>
@@ -4997,14 +8149,49 @@ function App() {
                         </div>
                         <div className="meta-row">
                           <span>{sensor.location}</span>
-                          <span>{sensor.description || 'Registered sensor'}</span>
+                          <span>{sensor.description || 'Registered system'}</span>
+                        </div>
+                        <div className="meta-row">
+                          <span>
+                            {sensor.activeLeakCount
+                              ? `${sensor.activeLeakCount} active leak`
+                              : 'No active leaks'}
+                          </span>
+                          <span>
+                            {sensor.latestSignal
+                              ? formatRelativeTime(sensor.latestSignal.observedAt)
+                              : 'No telemetry yet'}
+                          </span>
+                        </div>
+                        <div className="action-cluster">
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => loadSensorIntoForm(sensor)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => toggleSensorActive(sensor)}
+                          >
+                            {sensor.isActive ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button danger-button"
+                            onClick={() => handleDeleteSensor(sensor)}
+                          >
+                            Delete
+                          </button>
                         </div>
                       </li>
                     ))}
                   </ul>
                 ) : (
                   <div className="empty-state">
-                    No sensors registered yet. Add one here or in the admin panel first.
+                    No systems registered yet. Add the first one here to start wiring telemetry.
                   </div>
                 )}
               </article>
@@ -5013,14 +8200,16 @@ function App() {
                 <div className="section-head">
                   <div>
                     <p className="eyebrow">IoT feed</p>
-                    <h2>Publish leak telemetry</h2>
+                    <h2>
+                      {editingLeakReport ? 'Update leak telemetry' : 'Publish leak telemetry'}
+                    </h2>
                   </div>
                   <StatusBadge state={leakState} label={leakBadge} />
                 </div>
 
                 <form className="stack-form" onSubmit={handleLeakSubmit}>
                   <label>
-                    Registered sensor
+                    Registered system
                     <select
                       name="sensorId"
                       value={leakForm.sensorId}
@@ -5028,7 +8217,7 @@ function App() {
                       required
                     >
                       <option value="" disabled>
-                        Select sensor
+                        Select system
                       </option>
                       {activeSensors.map((sensor) => (
                         <option key={sensor.id} value={sensor.id}>
@@ -5038,14 +8227,14 @@ function App() {
                     </select>
                   </label>
 
-                  <div className="inline-note">
-                    <span className="strip-label">Linked location</span>
-                    <strong>
-                      {selectedSensor
-                        ? selectedSensor.location
-                        : 'Select a registered sensor to load the location automatically.'}
-                    </strong>
-                  </div>
+                    <div className="inline-note">
+                      <span className="strip-label">Linked location</span>
+                      <strong>
+                        {selectedSensor
+                          ? selectedSensor.location
+                          : 'Select a registered system to load the location automatically.'}
+                      </strong>
+                    </div>
 
                   <div className="dual-grid">
                     <label>
@@ -5102,30 +8291,105 @@ function App() {
                     </label>
                   </div>
 
-                  <button
-                    type="submit"
-                    disabled={leakFormState === 'submitting' || !activeSensors.length}
-                  >
-                    {leakFormState === 'submitting'
-                      ? 'Publishing signal...'
-                      : 'Publish leak signal'}
-                  </button>
+                  <div className="inline-note">
+                    <span className="strip-label">Editor mode</span>
+                    <strong>
+                      {editingLeakReport
+                        ? `Editing ${editingLeakReport.sensorName}`
+                        : 'Creating a new leak signal'}
+                    </strong>
+                  </div>
+
+                  <div className="action-cluster">
+                    <button
+                      type="submit"
+                      disabled={leakFormState === 'submitting' || !activeSensors.length}
+                    >
+                      {leakFormState === 'submitting'
+                        ? editingLeakReport
+                          ? 'Updating signal...'
+                          : 'Publishing signal...'
+                        : editingLeakReport
+                          ? 'Update leak signal'
+                          : 'Publish leak signal'}
+                    </button>
+                    {editingLeakReport ? (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => setLeakForm(initialLeakForm)}
+                      >
+                        Clear editor
+                      </button>
+                    ) : null}
+                  </div>
                 </form>
 
                 <p className={`form-message is-${leakFormState}`}>
                   {leakFormMessage}
                 </p>
+
+                {leakData.leakReports.length ? (
+                  <ul className="list-stack compact-stack">
+                    {leakData.leakReports.slice(0, 6).map((report) => (
+                      <li key={report.id} className="list-card">
+                        <div className="list-top">
+                          <div>
+                            <strong>{report.sensorName}</strong>
+                            <p>{report.location}</p>
+                          </div>
+                          <span className={`pill is-${report.status}`}>
+                            {formatStatusLabel(report.status)}
+                          </span>
+                        </div>
+                        <div className="meta-row">
+                          <span>{report.leakageRate}</span>
+                          <span>{formatTimestamp(report.observedAt)}</span>
+                        </div>
+                        <div className="meta-row">
+                          <span>{report.isActive ? 'Active signal' : 'Archived signal'}</span>
+                          <span>Display order {report.displayOrder}</span>
+                        </div>
+                        <div className="action-cluster">
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => loadLeakIntoForm(report)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => toggleLeakActive(report)}
+                          >
+                            {report.isActive ? 'Archive' : 'Activate'}
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button danger-button"
+                            onClick={() => handleDeleteLeakReport(report)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </article>
             </section>
           ) : null}
 
           {isAdmin ? (
             <section className="panel-grid">
-              <article className="panel-card">
+              <article className="panel-card" id="product-management-panel">
                 <div className="section-head">
                   <div>
                     <p className="eyebrow">Product management</p>
-                    <h2>Publish or update a product</h2>
+                    <h2>
+                      {productForm.id ? 'Update a product' : 'Publish or update a product'}
+                    </h2>
                   </div>
                   <StatusBadge state={productState} label={productBadge} />
                 </div>
@@ -5196,7 +8460,7 @@ function App() {
                       <input
                         name="video"
                         type="file"
-                        accept="video/*"
+                        accept={browserSupportedVideoAccept}
                         onChange={handleProductChange}
                         required={
                           !productForm.image &&
@@ -5211,6 +8475,7 @@ function App() {
                       <strong>
                         {productForm.videoName || 'Browse for a video file'}
                       </strong>
+                      <p>Use MP4, WebM, or Ogg for reliable browser playback.</p>
                     </div>
                   </div>
 
@@ -5225,11 +8490,33 @@ function App() {
                     />
                   </label>
 
-                  <button type="submit" disabled={productFormState === 'submitting'}>
-                    {productFormState === 'submitting'
-                      ? 'Saving product...'
-                      : 'Save product'}
-                  </button>
+                  <div className="inline-note">
+                    <span className="strip-label">Editor mode</span>
+                    <strong>
+                      {productForm.id
+                        ? `Editing ${productForm.name}`
+                        : 'Creating or matching a product by name'}
+                    </strong>
+                  </div>
+
+                  <div className="action-cluster">
+                    <button type="submit" disabled={productFormState === 'submitting'}>
+                      {productFormState === 'submitting'
+                        ? 'Saving product...'
+                        : productForm.id
+                          ? 'Update product'
+                          : 'Save product'}
+                    </button>
+                    {productForm.id ? (
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => setProductForm(initialProductForm)}
+                      >
+                        Clear editor
+                      </button>
+                    ) : null}
+                  </div>
                 </form>
 
                 <p className={`form-message is-${productFormState}`}>
@@ -5257,6 +8544,50 @@ function App() {
                 ) : (
                   <div className="empty-state">No products published yet.</div>
                 )}
+
+                {productData.products.length ? (
+                  <ul className="list-stack compact-stack">
+                    {productData.products.map((product) => (
+                      <li key={`product-editor-${product.id}`} className="list-card">
+                        <div className="list-top">
+                          <div>
+                            <strong>{product.name}</strong>
+                            <p>{product.summary || 'No summary yet.'}</p>
+                          </div>
+                          <span className="pill is-neutral">
+                            Order {product.displayOrder}
+                          </span>
+                        </div>
+                        <div className="meta-row">
+                          <span>
+                            {product.videoUrl
+                              ? 'Video ready'
+                              : product.imageUrl
+                                ? 'Image ready'
+                                : 'Needs media'}
+                          </span>
+                          <span>{formatRelativeTime(product.createdAt)}</span>
+                        </div>
+                        <div className="action-cluster">
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => loadProductIntoForm(product)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button danger-button"
+                            onClick={() => handleDeleteProduct(product)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
 
                 <button
                   type="button"
@@ -5426,7 +8757,6 @@ function App() {
                         type="file"
                         accept="image/*"
                         onChange={handleTeamPhotoUpdateChange}
-                        required
                       />
                     </label>
 
@@ -5457,13 +8787,13 @@ function App() {
                   <p className="muted-line">
                     {teamPhotoUpdateForm.photoName
                       ? `Selected file: ${teamPhotoUpdateForm.photoName}`
-                      : 'Choose a real image file for the selected team member.'}
+                      : 'Choose a new image file if you want to replace the current portrait, or edit the text fields and save without uploading a new photo.'}
                   </p>
 
                   <button type="submit" disabled={teamPhotoUpdateState === 'submitting'}>
                     {teamPhotoUpdateState === 'submitting'
-                      ? 'Updating photo...'
-                      : 'Update team member photo'}
+                      ? 'Updating team member...'
+                      : 'Update team member'}
                   </button>
                 </form>
 
@@ -5483,16 +8813,29 @@ function App() {
                           {member.photoUrl ? 'Photo ready' : 'Needs photo'}
                         </span>
                       </div>
+                      <div className="meta-row">
+                        <span>Display order {member.displayOrder}</span>
+                        <span>{formatRelativeTime(member.createdAt)}</span>
+                      </div>
+                      <div className="action-cluster">
+                        <button
+                          type="button"
+                          className="secondary-button danger-button"
+                          onClick={() => handleDeleteTeamMember(member)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>
               </article>
 
-              <article className="panel-card">
+              <article className="panel-card" id="contact-inbox-panel">
                 <div className="section-head">
                   <div>
-                    <p className="eyebrow">Contact inbox</p>
-                    <h2>Messages from the About Us page</h2>
+                    <p className="eyebrow">Inquiry inbox</p>
+                    <h2>Inquiries from the website and workspace</h2>
                   </div>
                   <StatusBadge state={contactInboxState} label={inboxBadge} />
                 </div>
@@ -5500,7 +8843,7 @@ function App() {
                 <div className="inline-note">
                   <span className="strip-label">Inbox summary</span>
                   <strong>
-                    {contactInbox.summary.totalMessages} total / {contactInbox.summary.unreadMessages} unread
+                    {contactInbox.summary.totalMessages} total inquiries / {contactInbox.summary.unreadMessages} unread
                   </strong>
                 </div>
 
@@ -5532,631 +8875,345 @@ function App() {
                           <span>{messageItem.email}</span>
                           <span>{formatTimestamp(messageItem.createdAt)}</span>
                         </div>
-                        {messageItem.senderId ? (
-                          <div className="action-cluster">
+                        <div className="action-cluster">
+                          {messageItem.senderId ? (
                             <button
                               type="button"
                               className="secondary-button"
                               onClick={() => openDirectConversation(messageItem.senderId)}
                             >
-                              Reply in chat
+                              Reply in messages
                             </button>
-                          </div>
-                        ) : null}
+                          ) : null}
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => handleContactMessageReadToggle(messageItem)}
+                          >
+                            Mark as {messageItem.isRead ? 'unread' : 'read'}
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button danger-button"
+                            onClick={() => handleDeleteContactMessage(messageItem)}
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <div className="empty-state">No contact messages yet.</div>
+                  <div className="empty-state">No inquiries yet.</div>
                 )}
               </article>
             </section>
           ) : null}
-        </main>
-      ) : (
-        <main className="page-layout home-layout">
-          <section className="hero-card">
-            <p className="eyebrow">{homePage.eyebrow}</p>
-            <h1>{homePage.title}</h1>
-            <p className="hero-text">{homePage.description}</p>
 
-            <div className="water-stage">
-              <article className="water-intro-card">
-                <span className="water-chip">Water intelligence</span>
-                <h2>{homeVisualTitle}</h2>
-                <p>{homeVisualDescription}</p>
-
-                <div className="water-intro-stats">
+          {isAdmin ? (
+            <section className="panel-grid" id="direct-messages-panel">
+              <article className="panel-card">
+                <div className="section-head">
                   <div>
-                    <span className="strip-label">Live media</span>
-                    <strong>{String(floatingVisuals.length).padStart(2, '0')}</strong>
+                    <p className="eyebrow">Direct messages</p>
+                    <h2>Reply to signed-in users from the workspace</h2>
                   </div>
-                  <div>
-                    <span className="strip-label">Critical leaks</span>
-                    <strong>{String(criticalLeakItems.length).padStart(2, '0')}</strong>
-                  </div>
-                  <div>
-                    <span className="strip-label">Public notices</span>
-                    <strong>{String(bulletinItems.length).padStart(2, '0')}</strong>
-                  </div>
+                  <StatusBadge state={directMessageState} label={directMessageBadge} />
                 </div>
+
+                <p className="muted-line">{directMessageMessage}</p>
+
+                {directMessageContacts.length ? (
+                  <ul className="list-stack compact-stack">
+                    {directMessageContacts.map((contact) => (
+                      <li key={contact.id} className="list-card">
+                        <div className="list-top">
+                          <div>
+                            <strong>{contact.fullName}</strong>
+                            <p>@{contact.username}</p>
+                          </div>
+                          <span className={`pill is-${contact.role}`}>
+                            {contact.unreadMessages
+                              ? `${contact.unreadMessages} unread`
+                              : formatStatusLabel(contact.role)}
+                          </span>
+                        </div>
+                        <div className="meta-row">
+                          <span>{contact.email}</span>
+                          <span>
+                            {contact.latestMessageAt
+                              ? formatRelativeTime(contact.latestMessageAt)
+                              : 'No conversation yet'}
+                          </span>
+                        </div>
+                        <p className="message-body">
+                          {contact.latestMessage || 'Start the conversation from the reply panel.'}
+                        </p>
+                        <div className="action-cluster">
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => {
+                              setSelectedDirectParticipantId(String(contact.id))
+                              refreshDirectMessages({ participantId: String(contact.id) })
+                            }}
+                          >
+                            Open conversation
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="empty-state">
+                    Signed-in users will appear here once a conversation is available.
+                  </div>
+                )}
               </article>
 
-              <div className="water-gallery-shell">
-                {floatingVisuals.length ? (
-                  <div className="water-gallery">
-                    {floatingVisuals.map((item, index) => (
+              <article className="panel-card">
+                <div className="section-head">
+                  <div>
+                    <p className="eyebrow">Reply panel</p>
+                    <h2>
+                      {activeDirectParticipant
+                        ? `Conversation with ${activeDirectParticipant.fullName}`
+                        : 'Select a user to reply'}
+                    </h2>
+                  </div>
+                </div>
+
+                <p className="muted-line">
+                  {activeDirectParticipant
+                    ? `Replying as @${currentUser.username} to @${activeDirectParticipant.username}.`
+                    : 'Choose a signed-in user from the list to load the conversation here.'}
+                </p>
+
+                {activeDirectMessages.length ? (
+                  <div className="chat-thread">
+                    {activeDirectMessages.map((messageItem) => (
                       <article
-                        key={item.id}
-                        className={`water-bubble bubble-${(index % 6) + 1}`}
-                        style={{ '--delay': `${index * 0.9}s` }}
+                        key={messageItem.id}
+                        className={`chat-message${messageItem.direction === 'outgoing' ? ' is-outgoing' : ''}`}
                       >
-                        <MediaAsset
-                          imageUrl={item.imageUrl}
-                          videoUrl={item.videoUrl}
-                          alt={item.title}
-                          className="bubble-media"
-                          fallback={<div className="announcement-image-fallback">{item.title}</div>}
-                        />
-                        <div className="water-bubble-copy">
-                          <span>{item.caption}</span>
-                          <strong>{item.title}</strong>
+                        <div className="list-top">
+                          <div>
+                            <strong>{messageItem.senderDisplayName}</strong>
+                            <p>@{messageItem.senderUsername}</p>
+                          </div>
+                          <span className={`pill is-${messageItem.senderRole}`}>
+                            {messageItem.isRead ? 'Read' : 'Unread'}
+                          </span>
+                        </div>
+                        <p className="message-body">{messageItem.body}</p>
+                        <div className="meta-row">
+                          <span>{formatTimestamp(messageItem.createdAt)}</span>
+                          <span>{messageItem.direction}</span>
+                        </div>
+                        <div className="action-cluster">
+                          <button
+                            type="button"
+                            className="secondary-button danger-button"
+                            onClick={() => handleDirectMessageDelete(messageItem)}
+                          >
+                            Delete
+                          </button>
                         </div>
                       </article>
                     ))}
                   </div>
                 ) : (
                   <div className="empty-state">
-                    Upload adverts, product media, or team photos to start the live media wall.
+                    No conversation messages yet for this user.
                   </div>
                 )}
-              </div>
-            </div>
 
-            {leadStory ? (
-              <section className="newsroom-shell">
-                <div className="section-head newsroom-head">
+                <form className="stack-form" onSubmit={handleDirectMessageSubmit}>
+                  <label>
+                    Reply
+                    <textarea
+                      name="body"
+                      value={directMessageForm.body}
+                      onChange={handleDirectMessageChange}
+                      placeholder="Write your reply here"
+                      rows="4"
+                      required
+                    />
+                  </label>
+
+                  <button
+                    type="submit"
+                    disabled={
+                      directMessageState === 'refreshing' || !activeDirectParticipant
+                    }
+                  >
+                    {directMessageState === 'refreshing' ? 'Sending...' : 'Send reply'}
+                  </button>
+                </form>
+              </article>
+
+              <article className="panel-card panel-span">
+                <div className="section-head">
                   <div>
-                    <p className="eyebrow">Live homepage desks</p>
-                    <h2>Rotating headlines from your published content</h2>
-                  </div>
-                  <div className="newsroom-head-note">
-                    <strong>{formatClock(clock)}</strong>
-                    <span>{pluralize(newsroomItems.length, 'story')} in rotation</span>
+                    <p className="eyebrow">System-wide feed</p>
+                    <h2>Latest direct messages across the workspace</h2>
                   </div>
                 </div>
 
-                <div className="newsroom-grid">
-                  <NewsroomLeadCard item={leadStory} />
+                <p className="muted-line">
+                  This mirrors the broader direct-message visibility you had in Django admin.
+                </p>
 
-                  <div className="newsroom-brief-stack">
-                    {supportingNewsroomItems.map((item, index) => (
-                      <NewsroomBriefCard
-                        key={item.id}
-                        item={item}
-                        isActive={index === 0}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                {activeDesk && activeDeskLead ? (
-                  <div className="desk-shell">
-                    <div className="section-head">
-                      <div>
-                        <p className="eyebrow">{activeDesk.eyebrow}</p>
-                        <h2>{activeDesk.title}</h2>
-                      </div>
-                      <StatusBadge state={activeDesk.state} label={activeDesk.badge} />
-                    </div>
-
-                    <div className="desk-tab-row">
-                      {homeDeskGroups.map((desk, index) => (
-                        <button
-                          key={desk.id}
-                          type="button"
-                          className={`secondary-button desk-tab${index === activeDeskIndex % homeDeskGroups.length ? ' is-active' : ''}`}
-                          onClick={() => setActiveDeskIndex(index)}
-                        >
-                          <span>{desk.label}</span>
-                          <strong>{String(desk.items.length).padStart(2, '0')}</strong>
-                        </button>
-                      ))}
-                    </div>
-
-                    <article className="desk-board">
-                      <div className="desk-board-copy">
-                        <p>{activeDesk.description}</p>
-
-                        <div className="desk-board-lead">
-                          <div className="desk-board-lead-meta">
-                            <span>{activeDeskLead.sectionLabel}</span>
-                            <span>{formatTimestamp(activeDeskLead.timestamp)}</span>
+                {systemDirectMessages.length ? (
+                  <ul className="list-stack">
+                    {systemDirectMessages.slice(0, 12).map((messageItem) => (
+                      <li key={`system-${messageItem.id}`} className="list-card">
+                        <div className="list-top">
+                          <div>
+                            <strong>
+                              @{messageItem.senderUsername} to @{messageItem.recipientUsername}
+                            </strong>
+                            <p>{messageItem.senderRole} to {messageItem.recipientRole}</p>
                           </div>
-                          <h3>{activeDeskLead.headline}</h3>
-                          <p>{activeDeskLead.summary}</p>
-                          <div className="desk-board-lead-footer">
-                            <span className={`pill is-${activeDeskLead.pillTone}`}>
-                              {activeDeskLead.pillLabel}
-                            </span>
-                            <span>{activeDeskLead.meta}</span>
-                          </div>
+                          <span className={`pill${messageItem.isRead ? '' : ' is-unread'}`}>
+                            {messageItem.isRead ? 'Read' : 'Unread'}
+                          </span>
                         </div>
+                        <p className="message-body">{messageItem.body}</p>
+                        <div className="meta-row">
+                          <span>{formatTimestamp(messageItem.createdAt)}</span>
+                          <span>{formatRelativeTime(messageItem.createdAt)}</span>
+                        </div>
+                        <div className="action-cluster">
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() =>
+                              openDirectConversation(
+                                messageItem.senderRole === 'admin'
+                                  ? messageItem.recipientId
+                                  : messageItem.senderId,
+                              )
+                            }
+                          >
+                            Open conversation
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button danger-button"
+                            onClick={() => handleDirectMessageDelete(messageItem)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="empty-state">No direct messages have been sent yet.</div>
+                )}
+              </article>
+            </section>
+          ) : null}
+        </main>
+      ) : isAuthRoute ? (
+        <main className="page-layout auth-only-layout">
+          <section className="auth-card auth-only-card">
+            {authFormContent}
+            {authMessage ? <p className={`form-message is-${authState}`}>{authMessage}</p> : null}
+          </section>
+        </main>
+      ) : (
+        <main className="page-layout welcome-layout">
+          <section className="hero-card welcome-hero-card">
+            <div className="welcome-hero-grid">
+              <div className="welcome-hero-copy">
+                <p className="eyebrow">{homePage.eyebrow}</p>
+                <h1>{homePage.title}</h1>
+                <p className="hero-text">{homePage.description}</p>
 
-                        {activeDeskQueue.length ? (
-                          <div className="desk-feed-list">
-                            {activeDeskQueue.map((item) => (
-                              <DeskFeedRow key={item.id} item={item} />
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
+                <div className="welcome-action-row">
+                  <button
+                    type="button"
+                    className="secondary-button welcome-primary-button"
+                    onClick={() => navigate('/signup')}
+                  >
+                    Get started
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button ghost-button"
+                    onClick={() => navigate('/login')}
+                  >
+                    Login
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary-button ghost-button"
+                    onClick={() => navigate('/products')}
+                  >
+                    Explore platform
+                  </button>
+                </div>
 
-                      <div className="desk-board-media-shell">
-                        <MediaAsset
-                          imageUrl={activeDeskLead.imageUrl}
-                          videoUrl={activeDeskLead.videoUrl}
-                          alt={activeDeskLead.headline}
-                          className="desk-board-media"
-                          fallback={
-                            <div className="newsroom-media-fallback">
-                              <span>{activeDesk.label}</span>
-                              <strong>{activeDeskLead.headline}</strong>
-                            </div>
-                          }
-                        />
-                      </div>
-                    </article>
-                  </div>
-                ) : null}
-              </section>
-            ) : null}
-
-            {streamVisuals.length ? (
-              <div className="stream-strip" aria-hidden="true">
-                <div className="stream-track">
-                  {streamVisuals.map((item, index) => (
-                    <article key={`${item.id}-${index}`} className="stream-card">
-                      <MediaAsset
-                        imageUrl={item.imageUrl}
-                        videoUrl={item.videoUrl}
-                        alt=""
-                        className="stream-media"
-                        fallback={<div className="announcement-image-fallback">{item.title}</div>}
-                      />
+                <div className="welcome-proof-grid">
+                  {homeCommandStats.slice(0, 3).map((item) => (
+                    <article key={`welcome-${item.label}`} className="welcome-proof-card">
+                      <span>{item.label}</span>
+                      <strong>{item.value}</strong>
                     </article>
                   ))}
                 </div>
               </div>
-            ) : null}
 
-            <ProductPulseRail
-              products={productData.products}
-              activeIndex={activeProductRailIndex}
-              eyebrow="Product gallery"
-              title="Published product visuals"
-              description={
-                productMediaItems.length
-                  ? `${pluralize(productMediaItems.length, 'product visual')} ${productMediaItems.length === 1 ? 'is' : 'are'} featured on the homepage.`
-                  : 'Upload product images from the workspace to populate this gallery on the homepage.'
-              }
-              state={productState}
-              badge={productBadge}
-              emptyMessage="No product media has been published yet. Add product images from the workspace to populate this gallery."
-            />
-
-            <div className="hero-showcase">
-              <AnnouncementPulseRail
-                items={advertItems}
-                activeIndex={activeAdvertIndex}
-                eyebrow="Public adverts"
-                title="Published campaigns"
-                description={
-                  advertItems.length
-                    ? `${pluralize(advertItems.length, 'campaign')} ${advertItems.length === 1 ? 'is' : 'are'} featured here.`
-                    : 'Publish adverts from the workspace to populate this gallery.'
-                }
-                state={announcementState}
-                badge={announcementBadge}
-                emptyMessage="No advert has been published yet. Admins can add one from the workspace."
-                singularLabel="campaign"
-                pluralLabel="campaigns"
-                leadPillLabel="Campaign"
-              />
-
-              {canViewLeakStatus ? (
-                <article className="signal-panel">
-                  <div className="section-head">
-                    <div>
-                      <p className="eyebrow">IoT leak board</p>
-                      <h2>Location, time, and leakage</h2>
+              <article className="hero-command-stage welcome-media-stage">
+                <MediaAsset
+                  imageUrl={homeSpotlightItem?.imageUrl || stockMedia.pipeLeakImage}
+                  videoUrl={homeSpotlightItem?.videoUrl || stockMedia.pipeBurstVideo}
+                  alt={homeSpotlightItem?.headline || 'Leak detection command view'}
+                  className="hero-command-media"
+                  fallback={
+                    <div className="hero-command-fallback">
+                      <span>Live command view</span>
+                      <strong>{homeCommandHeadline}</strong>
                     </div>
-                    <StatusBadge state={leakState} label={leakBadge} />
+                  }
+                />
+                <div className="hero-command-scan" aria-hidden="true" />
+                <div className="hero-command-grid" aria-hidden="true" />
+
+                <div className="hero-command-overlay">
+                  <div className="hero-command-topline">
+                    <span className="hero-command-kicker">Welcome to Aqual Sentinel</span>
+                    <span className="hero-command-time">{formatClock(clock)}</span>
                   </div>
 
-                  <div className="signal-summary">
-                    <div className="inline-note">
-                      <span className="strip-label">Critical alerts</span>
-                      <strong>{criticalLeakItems.length}</strong>
-                    </div>
-                    <div className="inline-note">
-                      <span className="strip-label">Latest update</span>
-                      <strong>
-                        {leakData.summary.latestObservedAt
-                          ? formatRelativeTime(leakData.summary.latestObservedAt)
-                          : 'Awaiting signal'}
-                      </strong>
-                    </div>
-                  </div>
-
-                  <div className="leak-fact-grid">
-                    {publicLeakFacts.map((fact) => (
-                      <article key={fact.label} className="leak-fact-card">
-                        <span className="strip-label">{fact.label}</span>
-                        <strong>{fact.value}</strong>
-                      </article>
+                  <div className="spotlight-badge-row">
+                    {homeSpotlightBadges.map((badge) => (
+                      <span
+                        key={`hero-${badge.label}-${badge.tone}`}
+                        className={`pill is-${badge.tone}`}
+                      >
+                        {badge.label}
+                      </span>
                     ))}
                   </div>
 
-                  {leakData.leakReports.length ? (
-                    <div className="leak-grid">
-                      {leakData.leakReports.slice(0, 2).map((leakReport) => (
-                        <LeakCard
-                          key={leakReport.id}
-                          leakReport={leakReport}
-                          publicView
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="empty-state">
-                      No IoT leak signals published yet.
-                    </div>
-                  )}
-                </article>
-              ) : (
-                <TelemetryAccessPanel />
-              )}
-            </div>
+                  <h2>{homeCommandHeadline}</h2>
+                  <p>{homeCommandDescription}</p>
 
-            <div className="signal-story-grid">
-              {guestHomeSignalCards.map((item) => (
-                <SignalStoryCard
-                  key={item.key || item.eyebrow}
-                  eyebrow={item.eyebrow}
-                  value={item.value}
-                  title={item.title}
-                  description={item.description}
-                  tone={item.tone}
-                />
-              ))}
-            </div>
-
-            <div className="metric-grid">
-              {homeMetrics.map((metric) => (
-                <article key={metric.label} className="metric-card">
-                  <strong>{metric.value}</strong>
-                  <span>{metric.label}</span>
-                </article>
-              ))}
-            </div>
-
-            <div className="highlight-grid">
-              {homeHighlights.map((item) => (
-                <article key={item.title} className="panel-card highlight-card">
-                  <h3>{item.title}</h3>
-                  <p>{item.description}</p>
-                </article>
-              ))}
-            </div>
-
-            <div className="public-live-grid">
-              <AnnouncementPulseRail
-                items={bulletinItems}
-                activeIndex={activeBulletinIndex}
-                eyebrow="Announcements"
-                title="Public notices from admins"
-                description={
-                  bulletinItems.length
-                    ? `${pluralize(bulletinItems.length, 'public notice')} ${bulletinItems.length === 1 ? 'is' : 'are'} featured here.`
-                    : 'Publish notices from the workspace to populate this gallery.'
-                }
-                state={announcementState}
-                badge={announcementBadge}
-                emptyMessage="No public notices have been published yet."
-                singularLabel="public notice"
-                pluralLabel="public notices"
-                leadPillLabel="Notice"
-              />
-
-              {canViewLeakStatus ? (
-                <article className="panel-card">
-                  <div className="section-head">
-                    <div>
-                      <p className="eyebrow">Leak telemetry</p>
-                      <h2>Leakage, status, time, and location</h2>
-                    </div>
-                    <StatusBadge state={leakState} label={leakBadge} />
-                  </div>
-
-                  <div className="leak-fact-grid">
-                    {publicLeakFacts.map((fact) => (
-                      <article key={fact.label} className="leak-fact-card">
-                        <span className="strip-label">{fact.label}</span>
-                        <strong>{fact.value}</strong>
+                  <div className="hero-command-meta-grid">
+                    {homeCommandStats.slice(0, 3).map((item) => (
+                      <article key={item.label} className="hero-command-meta-card">
+                        <span>{item.label}</span>
+                        <strong>{item.value}</strong>
                       </article>
                     ))}
                   </div>
-
-                  {leakData.leakReports.length ? (
-                    <div className="leak-grid">
-                      {leakData.leakReports.slice(0, 3).map((leakReport) => (
-                        <LeakCard
-                          key={leakReport.id}
-                          leakReport={leakReport}
-                          publicView
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="empty-state">
-                      No leak telemetry has been published yet.
-                    </div>
-                  )}
-                </article>
-              ) : (
-                <TelemetryAccessPanel
-                  eyebrow="Leak telemetry"
-                  title="Leak status is available after sign in"
-                  description="Guests can browse public content, but live leakage details are visible only to logged-in users."
-                />
-              )}
-            </div>
-
-            <div className="preview-strip">
-              <div className="section-head">
-                <div>
-                  <p className="eyebrow">Team preview</p>
-                  <h2>Current About Us roster</h2>
                 </div>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => navigate('/about')}
-                >
-                  Open About Us
-                </button>
-              </div>
-
-              {previewTeamMembers.length ? (
-                <div className="mini-team-grid">
-                  {previewTeamMembers.map((member) => (
-                    <TeamCard key={member.id} member={member} brandName={brand.name} />
-                  ))}
-                </div>
-              ) : (
-                <div className="empty-state">The team preview is still loading.</div>
-              )}
-            </div>
-
-            <div className="system-strip">
-              <div>
-                <span className="strip-label">Announcements</span>
-                <strong>{announcementMessage}</strong>
-              </div>
-              <div>
-                <span className="strip-label">Leak feed</span>
-                <strong>{leakMessage}</strong>
-              </div>
-              <div>
-                <span className="strip-label">Team sync</span>
-                <strong>{teamMessage}</strong>
-              </div>
+              </article>
             </div>
           </section>
-
-          <aside className="auth-card auth-sidebar">
-            <div className="auth-brief">
-              <span className="water-chip">Platform access</span>
-              <h2>{guestBriefTitle}</h2>
-              <p>{guestBriefDescription}</p>
-            </div>
-
-            <div className="signal-story-grid compact-grid">
-              {publicGuestAccessCards.map((item) => (
-                <SignalStoryCard
-                  key={item.key || item.eyebrow}
-                  eyebrow={item.eyebrow}
-                  value={item.value}
-                  title={item.title}
-                  description={item.description}
-                  tone={item.tone}
-                />
-              ))}
-            </div>
-
-            <div className="mode-switch">
-              <button
-                type="button"
-                className={`mode-button${authMode === 'login' ? ' is-active' : ''}`}
-                onClick={() => setAuthMode('login')}
-              >
-                Login
-              </button>
-              <button
-                type="button"
-                className={`mode-button${authMode === 'signup' ? ' is-active' : ''}`}
-                onClick={() => setAuthMode('signup')}
-              >
-                Sign up
-              </button>
-            </div>
-
-            {authMode === 'login' ? (
-              <form className="stack-form" onSubmit={handleLoginSubmit}>
-                <div className="form-heading">
-                  <h2>Login</h2>
-                  <p>Use your username, password, and role to enter the workspace.</p>
-                </div>
-
-                <label>
-                  Username
-                  <input
-                    name="username"
-                    value={loginForm.username}
-                    onChange={handleLoginChange}
-                    placeholder="Enter your username"
-                    required
-                  />
-                </label>
-
-                <PasswordField
-                  label="Password"
-                  name="password"
-                  value={loginForm.password}
-                  onChange={handleLoginChange}
-                  placeholder="Enter your password"
-                  visible={passwordVisibility.login}
-                  onToggle={() => togglePasswordVisibility('login')}
-                  required
-                />
-
-                <label>
-                  Sign-in role
-                  <select
-                    name="role"
-                    value={loginForm.role}
-                    onChange={handleLoginChange}
-                    required
-                  >
-                    <option value="" disabled>
-                      Select role
-                    </option>
-                    <option value="user">User</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </label>
-
-                <p className="muted-line">
-                  Select <strong>User</strong> for regular accounts and <strong>Admin</strong> for
-                  accounts created with admin access.
-                </p>
-
-                <button
-                  type="submit"
-                  disabled={authState === 'submitting' || !loginForm.role}
-                >
-                  {authState === 'submitting' ? 'Signing in...' : 'Login'}
-                </button>
-              </form>
-            ) : (
-              <form className="stack-form" onSubmit={handleSignupSubmit}>
-                <div className="form-heading">
-                  <h2>Sign up</h2>
-                  <p>Select a role before creating the account.</p>
-                </div>
-
-                <label>
-                  Full name
-                  <input
-                    name="fullName"
-                    value={signupForm.fullName}
-                    onChange={handleSignupChange}
-                    placeholder="Jane Nalubega"
-                    required
-                  />
-                </label>
-
-                <label>
-                  Username
-                  <input
-                    name="username"
-                    value={signupForm.username}
-                    onChange={handleSignupChange}
-                    placeholder="janeops"
-                    required
-                  />
-                </label>
-
-                <label>
-                  Email
-                  <input
-                    name="email"
-                    type="email"
-                    value={signupForm.email}
-                    onChange={handleSignupChange}
-                    placeholder="jane@example.com"
-                    required
-                  />
-                </label>
-
-                <PasswordField
-                  label="Password"
-                  name="password"
-                  value={signupForm.password}
-                  onChange={handleSignupChange}
-                  placeholder="Use a strong password"
-                  visible={passwordVisibility.signup}
-                  onToggle={() => togglePasswordVisibility('signup')}
-                  required
-                />
-
-                <PasswordField
-                  label="Confirm password"
-                  name="confirmPassword"
-                  value={signupForm.confirmPassword}
-                  onChange={handleSignupChange}
-                  placeholder="Repeat the password"
-                  visible={passwordVisibility.signupConfirm}
-                  onToggle={() => togglePasswordVisibility('signupConfirm')}
-                  required
-                />
-
-                <label>
-                  Account role
-                  <select
-                    name="role"
-                    value={signupForm.role}
-                    onChange={handleSignupChange}
-                    required
-                  >
-                    <option value="" disabled>
-                      Select role
-                    </option>
-                    <option value="user">User</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </label>
-
-                <p className="muted-line">
-                  Select <strong>User</strong> for a regular account or <strong>Admin</strong> to
-                  create an account with admin access and administrator permissions. Use at least 8
-                  characters and avoid numeric-only passwords.
-                </p>
-
-                <button
-                  type="submit"
-                  disabled={authState === 'submitting' || !signupForm.role}
-                >
-                  {authState === 'submitting' ? 'Creating...' : 'Create account'}
-                </button>
-              </form>
-            )}
-
-            <p className={`form-message is-${authState}`}>{authMessage}</p>
-
-            <div className="sync-feed">
-              {guestSyncItems.map((item) => (
-                <article key={item.label} className="sync-row">
-                  <div className="list-top">
-                    <strong>{item.label}</strong>
-                    <span className="pill is-neutral">{item.state}</span>
-                  </div>
-                  <p>{item.message}</p>
-                </article>
-              ))}
-            </div>
-          </aside>
         </main>
       )}
     </div>

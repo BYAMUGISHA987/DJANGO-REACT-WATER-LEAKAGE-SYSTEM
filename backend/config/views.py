@@ -4,6 +4,9 @@ from django.shortcuts import redirect
 
 
 def frontend_app(request):
+    if settings.DEBUG:
+        return redirect(f'http://127.0.0.1:5173{request.get_full_path()}')
+
     index_file = settings.BASE_DIR / 'frontend_dist' / 'index.html'
 
     if index_file.exists():
@@ -11,9 +14,6 @@ def frontend_app(request):
             index_file.read_text(encoding='utf-8'),
             content_type='text/html',
         )
-
-    if settings.DEBUG:
-        return redirect('http://127.0.0.1:5173/')
 
     return HttpResponse(
         'Frontend build not found. Run the frontend build before deploying.',

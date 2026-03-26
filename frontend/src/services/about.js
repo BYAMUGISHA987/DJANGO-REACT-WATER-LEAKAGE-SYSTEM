@@ -139,6 +139,13 @@ export async function updateTeamMember(memberId, details) {
   return data
 }
 
+export async function deleteTeamMember(memberId) {
+  return requestJson(`${teamMembersEndpoint}${memberId}/`, {
+    method: 'DELETE',
+    needsCsrf: true,
+  })
+}
+
 export async function createContactMessage(details) {
   return requestJson(contactMessagesEndpoint, {
     method: 'POST',
@@ -149,4 +156,25 @@ export async function createContactMessage(details) {
 
 export async function fetchContactMessages() {
   return requestJson(contactMessagesEndpoint)
+}
+
+export async function updateContactMessageStatus(messageId, isRead) {
+  return requestJson(contactMessagesEndpoint, {
+    method: 'POST',
+    body: {
+      messageId,
+      isRead,
+    },
+    needsCsrf: true,
+  })
+}
+
+export async function deleteContactMessage(messageId) {
+  return requestJson(contactMessagesEndpoint, {
+    method: 'DELETE',
+    body: {
+      id: messageId,
+    },
+    needsCsrf: true,
+  })
 }

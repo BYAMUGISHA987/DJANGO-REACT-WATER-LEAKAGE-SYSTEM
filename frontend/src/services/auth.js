@@ -139,3 +139,26 @@ export async function createManagedUser(details) {
     needsCsrf: true,
   })
 }
+
+export async function updateManagedUser(userId, details) {
+  return requestJson(`/users/${userId}/`, {
+    method: 'POST',
+    body: details,
+    needsCsrf: true,
+  })
+}
+
+export async function deleteManagedUser(userId) {
+  return requestJson(`/users/${userId}/`, {
+    method: 'DELETE',
+    needsCsrf: true,
+  })
+}
+
+export async function changePassword(details) {
+  return requestJson('/password/', {
+    method: 'POST',
+    body: details,
+    needsCsrf: true,
+  })
+}

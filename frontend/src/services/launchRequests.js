@@ -1,3 +1,5 @@
+import { getCsrfToken } from './auth'
+
 const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '')
 
 export const launchRequestEndpoint = `${apiBaseUrl}/api/launch-requests/`
@@ -59,6 +61,35 @@ export async function createLaunchRequest(request) {
         email: request.email.trim().toLowerCase(),
         focusArea: request.focusArea,
       }),
+    })
+  } catch {
+    throw new Error(
+      'Unable to reach the API service. Start the service or update VITE_API_BASE_URL.',
+    )
+  }
+
+  const data = await parseJson(response)
+
+  if (!response.ok) {
+    throw new Error(data?.detail || formatErrors(data?.errors))
+  }
+
+  return data
+}
+
+export async function deleteLaunchRequest(id) {
+  const csrfToken = await getCsrfToken()
+  let response
+
+  try {
+    response = await fetch(launchRequestEndpoint, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken,
+      },
+      body: JSON.stringify({ id }),
     })
   } catch {
     throw new Error(

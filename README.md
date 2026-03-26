@@ -8,7 +8,7 @@ Aqual Sentinel is a water monitoring and response application for public reporti
 - Leak reporting and launch request submission
 - Contact inbox for administrator review
 - Direct messaging between the system admin and signed-in users
-- Administrative content management through the admin panel
+- Frontend-first admin workspace for content, messaging, systems, and operations
 
 ## Run locally
 
@@ -37,17 +37,33 @@ Aqual Sentinel is a water monitoring and response application for public reporti
    npm run dev
    ```
 
-4. Open:
+4. One-command live development workflow:
 
-   - `http://127.0.0.1:8000/`
-   - `http://127.0.0.1:8000/admin/`
+   ```bash
+   npm run live
+   ```
+
+   This starts Django on `http://127.0.0.1:8000` and the Vite live server on
+   `http://127.0.0.1:5173`.
+
+5. Open:
+
+   - `http://127.0.0.1:5173/` for the live frontend workspace
+   - `http://127.0.0.1:8000/` for the Django-served app
+   - `http://127.0.0.1:8000/admin/` for optional Django admin access
 
 ## Project structure
 
-- `backend/` — backend service, admin panel, APIs, and media handling
-- `frontend/` — user-facing application source
+- `backend/` — backend service, APIs, media handling, and optional Django admin
+- `frontend/` — public site and primary admin workspace
 - `DEPLOYMENT.md` — deployment steps
 
 ## Deployment
 
 Use `DEPLOYMENT.md` for container and manual release steps.
+
+## GitHub Pages frontend
+
+This repo now includes a GitHub Pages workflow for the React frontend in `frontend/`.
+The Django backend still needs to be hosted separately because the public site,
+workspace, login flow, uploads, and live content all use the API.

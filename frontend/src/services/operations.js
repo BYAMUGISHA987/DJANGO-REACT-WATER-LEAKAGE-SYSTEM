@@ -72,11 +72,16 @@ export async function createAnnouncement(details) {
   const csrfToken = await getCsrfToken()
   const formData = new FormData()
 
+  if (details.id) {
+    formData.append('id', details.id)
+  }
+
   formData.append('kind', details.kind)
   formData.append('title', details.title)
   formData.append('message', details.message)
   formData.append('ctaLabel', details.ctaLabel)
   formData.append('ctaLink', details.ctaLink)
+  formData.append('isActive', String(details.isActive ?? true))
 
   if (details.displayOrder !== '') {
     formData.append('displayOrder', details.displayOrder)
@@ -120,6 +125,14 @@ export async function createAnnouncement(details) {
   return data
 }
 
+export async function deleteAnnouncement(id) {
+  return requestJson(announcementsEndpoint, {
+    method: 'DELETE',
+    body: { id },
+    needsCsrf: true,
+  })
+}
+
 export async function createSensor(details) {
   return requestJson(sensorsEndpoint, {
     method: 'POST',
@@ -128,10 +141,26 @@ export async function createSensor(details) {
   })
 }
 
+export async function deleteSensor(id) {
+  return requestJson(sensorsEndpoint, {
+    method: 'DELETE',
+    body: { id },
+    needsCsrf: true,
+  })
+}
+
 export async function createLeakReport(details) {
   return requestJson(leakReportsEndpoint, {
     method: 'POST',
     body: details,
+    needsCsrf: true,
+  })
+}
+
+export async function deleteLeakReport(id) {
+  return requestJson(leakReportsEndpoint, {
+    method: 'DELETE',
+    body: { id },
     needsCsrf: true,
   })
 }

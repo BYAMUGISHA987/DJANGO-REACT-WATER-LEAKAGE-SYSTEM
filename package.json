@@ -1,4 +1,12 @@
 {
+  "name": "aqual-sentinel-system",
+  "private": true,
+  "scripts": {
+    "dev": "npm run live",
+    "live": "./scripts/dev-live.sh",
+    "dev:backend": "cd backend && ./venv/bin/python manage.py runserver 127.0.0.1:8000",
+    "dev:frontend": "npm --prefix frontend run dev -- --host 127.0.0.1"
+  },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",
     "axios": "^1.13.6",

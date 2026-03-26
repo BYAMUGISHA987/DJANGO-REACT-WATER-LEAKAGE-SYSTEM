@@ -1,0 +1,39 @@
+services:
+  - type: web
+    runtime: docker
+    name: aqual-sentinel-api
+    plan: starter
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    branch: main
+    autoDeployTrigger: commit
+    healthCheckPath: /api/auth/session/
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_DEBUG
+        value: "False"
+      - key: DJANGO_ALLOWED_HOSTS
+        value: ".onrender.com,localhost,127.0.0.1"
+      - key: DJANGO_CORS_ALLOWED_ORIGINS
+        value: "https://BYAMUGISHA987.github.io"
+      - key: DJANGO_CSRF_TRUSTED_ORIGINS
+        value: "https://BYAMUGISHA987.github.io"
+      - key: DJANGO_SESSION_COOKIE_SAMESITE
+        value: "None"
+      - key: DJANGO_SESSION_COOKIE_SECURE
+        value: "True"
+      - key: DJANGO_CSRF_COOKIE_SAMESITE
+        value: "None"
+      - key: DJANGO_CSRF_COOKIE_SECURE
+        value: "True"
+      - key: SQLITE_PATH
+        value: "/var/data/db.sqlite3"
+      - key: DJANGO_MEDIA_ROOT
+        value: "/var/data/media"
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 5

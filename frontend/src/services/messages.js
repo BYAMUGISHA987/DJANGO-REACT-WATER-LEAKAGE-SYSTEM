@@ -86,3 +86,38 @@ export async function sendDirectMessage(recipientId, body) {
 
   return data
 }
+
+export async function deleteDirectMessage(messageId) {
+  const csrfToken = await getCsrfToken()
+  let response
+
+  try {
+    response = await fetch(directMessagesEndpoint, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken,
+      },
+      body: JSON.stringify({
+        id: messageId,
+      }),
+    })
+  } catch {
+    throw new Error(
+      'Unable to reach the messaging API. Start the service or update VITE_API_BASE_URL.',
+    )
+  }
+
+  const data = await parseJson(response)
+
+  if (!response.ok) {
+    throw new Error(
+      data?.detail ||
+        formatErrors(data?.errors) ||
+        'Unable to delete the message.',
+    )
+  }
+
+  return data
+}

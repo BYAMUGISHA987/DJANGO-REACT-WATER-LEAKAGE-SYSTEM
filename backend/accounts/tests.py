@@ -77,6 +77,7 @@ class LaunchRequestApiTests(TestCase):
         self.assertEqual(len(payload['summary']['focusBreakdown']), 4)
         self.assertEqual(payload['recentRequests'][0]['requester'], 'Daniel K.')
         self.assertNotIn('email', payload['recentRequests'][0])
+        self.assertEqual(len(payload['requests']), 2)
 
     def test_rejects_invalid_email(self):
         response = self.client.post(
@@ -92,6 +93,25 @@ class LaunchRequestApiTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('email', response.json()['errors'])
+
+    def test_admin_can_delete_launch_request(self):
+        launch_request = LaunchRequest.objects.create(
+            full_name='Jane Nalubega',
+            organization='Kampala Water Operations',
+            email='ops@example.com',
+            focus_area=LaunchRequest.FocusArea.LEAK_MONITORING,
+        )
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+
+        response = self.client.delete(
+            reverse('launch-requests-api'),
+            data=json.dumps({'id': launch_request.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(LaunchRequest.objects.filter(pk=launch_request.pk).exists())
 
 
 class AuthenticationApiTests(TestCase):
@@ -273,7 +293,7 @@ class AuthenticationApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('password', response.json()['errors'])
 
-    def test_admin_cannot_create_regular_user_from_admin_endpoint(self):
+    def test_admin_can_create_regular_user_from_admin_endpoint(self):
         admin_user = User.objects.get(username='uadmin')
         self.client.force_login(admin_user)
 
@@ -289,9 +309,66 @@ class AuthenticationApiTests(TestCase):
             content_type='application/json',
         )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('role', response.json()['errors'])
-        self.assertFalse(User.objects.filter(username='operator1').exists())
+        self.assertEqual(response.status_code, 201)
+        managed_user = User.objects.get(username='operator1')
+        self.assertFalse(managed_user.is_staff)
+        self.assertFalse(managed_user.is_superuser)
+
+    def test_admin_can_update_existing_user_from_admin_endpoint(self):
+        admin_user = User.objects.get(username='uadmin')
+        managed_user = User.objects.create_user(
+            username='operator3',
+            email='operator3@example.com',
+            password='SecurePass123!',
+            first_name='Operator',
+            last_name='Three',
+        )
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse('user-detail-api', args=[managed_user.pk]),
+            data=json.dumps({
+                'username': 'updatedoperator',
+                'fullName': 'Updated Operator',
+                'email': 'updatedoperator@example.com',
+                'role': 'admin',
+                'password': 'UpdatedPass123!',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        managed_user.refresh_from_db()
+        self.assertEqual(managed_user.username, 'updatedoperator')
+        self.assertEqual(managed_user.email, 'updatedoperator@example.com')
+        self.assertTrue(managed_user.is_staff)
+        self.assertTrue(managed_user.is_superuser)
+        self.assertTrue(managed_user.check_password('UpdatedPass123!'))
+
+    def test_admin_can_delete_another_user_but_not_self(self):
+        admin_user = User.objects.get(username='uadmin')
+        managed_user = User.objects.create_user(
+            username='operator4',
+            email='operator4@example.com',
+            password='SecurePass123!',
+        )
+        self.client.force_login(admin_user)
+
+        delete_response = self.client.delete(
+            reverse('user-detail-api', args=[managed_user.pk]),
+            content_type='application/json',
+        )
+
+        self.assertEqual(delete_response.status_code, 200)
+        self.assertFalse(User.objects.filter(pk=managed_user.pk).exists())
+
+        self_delete_response = self.client.delete(
+            reverse('user-detail-api', args=[admin_user.pk]),
+            content_type='application/json',
+        )
+
+        self.assertEqual(self_delete_response.status_code, 400)
+        self.assertTrue(User.objects.filter(pk=admin_user.pk).exists())
 
     def test_non_admin_cannot_create_users(self):
         regular_user = User.objects.create_user(
@@ -330,6 +407,94 @@ class AuthenticationApiTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('password', response.json()['errors'])
+
+    def test_authenticated_user_can_change_password_and_stay_signed_in(self):
+        regular_user = User.objects.create_user(
+            username='passworduser',
+            email='passworduser@example.com',
+            password='SecurePass123!',
+            first_name='Password',
+            last_name='User',
+        )
+        self.client.force_login(regular_user)
+
+        response = self.client.post(
+            reverse('password-change-api'),
+            data=json.dumps({
+                'currentPassword': 'SecurePass123!',
+                'newPassword': 'SaferPass456!',
+                'confirmPassword': 'SaferPass456!',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        regular_user.refresh_from_db()
+        self.assertTrue(regular_user.check_password('SaferPass456!'))
+        self.assertFalse(regular_user.check_password('SecurePass123!'))
+        self.assertEqual(response.json()['message'], 'Password changed successfully.')
+
+        session_response = self.client.get(reverse('auth-session-api'))
+        self.assertEqual(session_response.status_code, 200)
+        self.assertEqual(session_response.json()['user']['username'], 'passworduser')
+
+        self.client.post(reverse('logout-api'))
+
+        old_login_response = self.client.post(
+            reverse('login-api'),
+            data=json.dumps({
+                'username': 'passworduser',
+                'password': 'SecurePass123!',
+                'role': 'user',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(old_login_response.status_code, 400)
+
+        new_login_response = self.client.post(
+            reverse('login-api'),
+            data=json.dumps({
+                'username': 'passworduser',
+                'password': 'SaferPass456!',
+                'role': 'user',
+            }),
+            content_type='application/json',
+        )
+        self.assertEqual(new_login_response.status_code, 200)
+
+    def test_password_change_rejects_incorrect_current_password(self):
+        regular_user = User.objects.create_user(
+            username='wrongcurrent',
+            email='wrongcurrent@example.com',
+            password='SecurePass123!',
+        )
+        self.client.force_login(regular_user)
+
+        response = self.client.post(
+            reverse('password-change-api'),
+            data=json.dumps({
+                'currentPassword': 'WrongPass123!',
+                'newPassword': 'SaferPass456!',
+                'confirmPassword': 'SaferPass456!',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('currentPassword', response.json()['errors'])
+
+    def test_password_change_requires_authenticated_user(self):
+        response = self.client.post(
+            reverse('password-change-api'),
+            data=json.dumps({
+                'currentPassword': 'SecurePass123!',
+                'newPassword': 'SaferPass456!',
+                'confirmPassword': 'SaferPass456!',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 401)
 
 
 class AboutApiTests(TestCase):
@@ -425,7 +590,7 @@ class AboutApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn('photo', response.json()['errors'])
 
-    def test_admin_cannot_update_team_member_without_photo(self):
+    def test_admin_can_update_team_member_without_reuploading_photo(self):
         admin_user = User.objects.get(username='uadmin')
         self.client.force_login(admin_user)
         member = TeamMember.objects.create(
@@ -445,8 +610,24 @@ class AboutApiTests(TestCase):
             },
         )
 
-        self.assertEqual(response.status_code, 400)
-        self.assertIn('photo', response.json()['errors'])
+        self.assertEqual(response.status_code, 200)
+        member.refresh_from_db()
+        self.assertEqual(member.bio, 'Updated bio.')
+
+    def test_admin_can_delete_team_member(self):
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+        member = TeamMember.objects.create(
+            full_name='Delete Me',
+            role_title='Engineer',
+            bio='Temporary record.',
+            display_order=12,
+        )
+
+        response = self.client.delete(reverse('team-member-detail-api', args=[member.pk]))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(TeamMember.objects.filter(pk=member.pk).exists())
 
     def test_public_can_send_contact_message(self):
         response = self.client.post(
@@ -530,6 +711,50 @@ class AboutApiTests(TestCase):
         response = self.client.get(reverse('contact-messages-api'))
 
         self.assertEqual(response.status_code, 403)
+
+    def test_admin_can_mark_contact_message_as_read(self):
+        contact_message = ContactMessage.objects.create(
+            full_name='Jane Visitor',
+            email='visitor@example.com',
+            subject='Need more details',
+            message='Please share more information about the project.',
+            is_read=False,
+        )
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse('contact-messages-api'),
+            data=json.dumps({
+                'messageId': contact_message.id,
+                'isRead': True,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        contact_message.refresh_from_db()
+        self.assertTrue(contact_message.is_read)
+        self.assertTrue(response.json()['contactMessage']['isRead'])
+
+    def test_admin_can_delete_contact_message(self):
+        contact_message = ContactMessage.objects.create(
+            full_name='Jane Visitor',
+            email='visitor@example.com',
+            subject='Remove me',
+            message='Temporary inbox item.',
+        )
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+
+        response = self.client.delete(
+            reverse('contact-messages-api'),
+            data=json.dumps({'id': contact_message.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(ContactMessage.objects.filter(pk=contact_message.pk).exists())
 
 
 class DirectMessageApiTests(TestCase):
@@ -617,6 +842,67 @@ class DirectMessageApiTests(TestCase):
         self.assertEqual(direct_message.sender, self.regular_user)
         self.assertEqual(direct_message.recipient, self.admin_user)
 
+    def test_admin_can_view_system_wide_direct_message_feed(self):
+        secondary_admin = User.objects.create_superuser(
+            username='opsadmin',
+            email='opsadmin@example.com',
+            password='SecurePass123!',
+        )
+        DirectMessage.objects.create(
+            sender=self.regular_user,
+            recipient=self.admin_user,
+            body='Need help with the latest field alert.',
+        )
+        DirectMessage.objects.create(
+            sender=self.other_user,
+            recipient=secondary_admin,
+            body='Please review my pressure reading.',
+        )
+        DirectMessage.objects.create(
+            sender=secondary_admin,
+            recipient=self.other_user,
+            body='I am reviewing the pressure issue now.',
+        )
+
+        self.client.force_login(self.admin_user)
+
+        response = self.client.get(reverse('direct-messages-api'))
+        payload = response.json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload['summary']['totalMessages'], 3)
+        self.assertEqual(len(payload['systemMessages']), 3)
+        self.assertEqual(
+            payload['systemMessages'][0]['body'],
+            'I am reviewing the pressure issue now.',
+        )
+        self.assertEqual(
+            payload['systemMessages'][1]['recipientUsername'],
+            'opsadmin',
+        )
+        self.assertEqual(
+            payload['systemMessages'][2]['senderUsername'],
+            'fielduser',
+        )
+
+    def test_admin_can_delete_direct_message(self):
+        direct_message = DirectMessage.objects.create(
+            sender=self.regular_user,
+            recipient=self.admin_user,
+            body='Delete this direct message.',
+        )
+
+        self.client.force_login(self.admin_user)
+
+        response = self.client.delete(
+            reverse('direct-messages-api'),
+            data=json.dumps({'id': direct_message.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(DirectMessage.objects.filter(pk=direct_message.pk).exists())
+
 
 @override_settings(STORAGES=TEST_STORAGES)
 class DirectMessageAdminTests(TestCase):
@@ -672,6 +958,43 @@ class DirectMessageAdminTests(TestCase):
         self.assertEqual(direct_message.recipient, self.regular_user)
 
 
+@override_settings(STORAGES=TEST_STORAGES)
+class AdminDeleteLinksTests(TestCase):
+    def setUp(self):
+        self.admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(self.admin_user)
+
+    def test_product_admin_changelist_shows_delete_link(self):
+        product = Product.objects.first()
+        assert product is not None
+
+        response = self.client.get(reverse('admin:accounts_product_changelist'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            f'href="{reverse("admin:accounts_product_delete", args=[product.pk])}"',
+        )
+
+    def test_site_content_admin_stays_non_deletable(self):
+        SiteContent.objects.get_or_create(pk=1)
+
+        response = self.client.get(reverse('admin:accounts_sitecontent_changelist'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'class="deletelink"')
+
+    def test_admin_add_form_links_to_existing_records_for_deletion(self):
+        response = self.client.get(reverse('admin:accounts_announcement_add'))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(
+            response,
+            reverse('admin:accounts_announcement_changelist'),
+        )
+        self.assertContains(response, 'Delete existing announcements')
+
+
 class ProductApiTests(TestCase):
     def test_public_products_endpoint_returns_seeded_product(self):
         response = self.client.get(reverse('products-api'))
@@ -701,7 +1024,7 @@ class ProductApiTests(TestCase):
             },
         )
 
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 200)
         self.assertEqual(Product.objects.count(), 1)
         self.assertIn('/media/products/', response.json()['product']['imageUrl'])
         self.assertEqual(Product.objects.get(name='Aqua Sentinel system').summary, 'Updated product summary.')
@@ -726,8 +1049,68 @@ class ProductApiTests(TestCase):
             },
         )
 
-        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.status_code, 200)
         self.assertIn('/media/products/videos/', response.json()['product']['videoUrl'])
+
+    def test_admin_cannot_save_product_with_unsupported_video_format(self):
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+        uploaded_video = SimpleUploadedFile(
+            'product.mov',
+            b'fake-product-video',
+            content_type='video/quicktime',
+        )
+
+        response = self.client.post(
+            reverse('products-api'),
+            data={
+                'name': 'Unsupported Product Video',
+                'summary': 'Video summary.',
+                'description': 'Video product description.',
+                'video': uploaded_video,
+                'displayOrder': 1,
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('video', response.json()['errors'])
+
+    def test_admin_can_update_existing_product_by_id_without_reuploading_media(self):
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+        initial_product_count = Product.objects.count()
+        product = Product.objects.create(
+            name='Field Device Suite',
+            summary='Existing summary.',
+            description='Existing description.',
+            image=SimpleUploadedFile(
+                'existing-product.jpg',
+                b'existing-product-image',
+                content_type='image/jpeg',
+            ),
+            display_order=1,
+        )
+        original_image_name = product.image.name
+
+        response = self.client.post(
+            reverse('products-api'),
+            data={
+                'id': product.id,
+                'name': 'Field Device Platform',
+                'summary': 'Updated summary.',
+                'description': 'Updated description.',
+                'displayOrder': 4,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        product.refresh_from_db()
+        self.assertEqual(product.name, 'Field Device Platform')
+        self.assertEqual(product.summary, 'Updated summary.')
+        self.assertEqual(product.description, 'Updated description.')
+        self.assertEqual(product.display_order, 4)
+        self.assertEqual(product.image.name, original_image_name)
+        self.assertEqual(Product.objects.count(), initial_product_count + 1)
 
     def test_admin_cannot_create_product_without_media(self):
         admin_user = User.objects.get(username='uadmin')
@@ -765,6 +1148,30 @@ class ProductApiTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+    def test_admin_can_delete_product(self):
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+        product = Product.objects.create(
+            name='Delete Product',
+            summary='Temporary summary.',
+            description='Temporary description.',
+            image=SimpleUploadedFile(
+                'delete-product.jpg',
+                b'delete-product-image',
+                content_type='image/jpeg',
+            ),
+            display_order=7,
+        )
+
+        response = self.client.delete(
+            reverse('products-api'),
+            data=json.dumps({'id': product.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Product.objects.filter(pk=product.pk).exists())
 
 
 class OperationsFeedApiTests(TestCase):
@@ -830,6 +1237,31 @@ class OperationsFeedApiTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertIn('/media/announcements/videos/', response.json()['announcement']['videoUrl'])
 
+    def test_admin_cannot_create_announcement_with_unsupported_video_format(self):
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+        uploaded_video = SimpleUploadedFile(
+            'advert.mov',
+            b'fake-advert-video',
+            content_type='video/quicktime',
+        )
+
+        response = self.client.post(
+            reverse('announcements-api'),
+            data={
+                'kind': 'advert',
+                'title': 'Unsupported video advert',
+                'message': 'Watch the product in action.',
+                'video': uploaded_video,
+                'ctaLabel': 'Watch now',
+                'ctaLink': 'https://example.com/video',
+                'displayOrder': 9,
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('video', response.json()['errors'])
+
     def test_admin_cannot_create_announcement_without_media(self):
         admin_user = User.objects.get(username='uadmin')
         self.client.force_login(admin_user)
@@ -846,6 +1278,68 @@ class OperationsFeedApiTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn('image', response.json()['errors'])
+
+    def test_admin_can_update_existing_announcement(self):
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+        announcement = Announcement.objects.create(
+            kind='announcement',
+            title='Original notice',
+            message='Original message.',
+            image=SimpleUploadedFile(
+                'original.jpg',
+                b'original-image',
+                content_type='image/jpeg',
+            ),
+            display_order=3,
+            is_active=True,
+        )
+
+        response = self.client.post(
+            reverse('announcements-api'),
+            data=json.dumps({
+                'id': announcement.id,
+                'kind': 'advert',
+                'title': 'Updated notice',
+                'message': 'Updated message.',
+                'ctaLabel': 'Read update',
+                'ctaLink': 'https://example.com/updated',
+                'displayOrder': 5,
+                'isActive': False,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        announcement.refresh_from_db()
+        self.assertEqual(announcement.kind, 'advert')
+        self.assertEqual(announcement.title, 'Updated notice')
+        self.assertFalse(announcement.is_active)
+        self.assertEqual(response.json()['announcement']['displayOrder'], 5)
+
+    def test_admin_can_delete_announcement(self):
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+        announcement = Announcement.objects.create(
+            kind='announcement',
+            title='Delete announcement',
+            message='Temporary message.',
+            image=SimpleUploadedFile(
+                'delete-announcement.jpg',
+                b'delete-announcement-image',
+                content_type='image/jpeg',
+            ),
+            display_order=3,
+        )
+
+        response = self.client.delete(
+            reverse('announcements-api'),
+            data=json.dumps({'id': announcement.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Announcement.objects.filter(pk=announcement.pk).exists())
 
     def test_admin_can_register_sensor(self):
         admin_user = User.objects.get(username='uadmin')
@@ -866,6 +1360,78 @@ class OperationsFeedApiTests(TestCase):
         sensor = Sensor.objects.get(sensor_code='AQS-001')
         self.assertEqual(sensor.display_name, 'Tank One Sensor')
         self.assertEqual(response.json()['sensor']['location'], 'Main tank inlet')
+
+    def test_admin_can_update_registered_sensor(self):
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+        sensor = Sensor.objects.create(
+            sensor_code='AQS-011',
+            display_name='Tank One Sensor',
+            location='Main tank inlet',
+            description='Primary field sensor.',
+            is_active=True,
+        )
+
+        response = self.client.post(
+            reverse('sensors-api'),
+            data=json.dumps({
+                'id': sensor.id,
+                'sensorCode': 'AQS-011',
+                'displayName': 'Updated Tank Sensor',
+                'location': 'North tank outlet',
+                'description': 'Updated notes.',
+                'isActive': False,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        sensor.refresh_from_db()
+        self.assertEqual(sensor.display_name, 'Updated Tank Sensor')
+        self.assertEqual(sensor.location, 'North tank outlet')
+        self.assertFalse(sensor.is_active)
+
+    def test_admin_can_delete_registered_sensor_without_linked_leaks(self):
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+        sensor = Sensor.objects.create(
+            sensor_code='AQS-099',
+            display_name='Delete Sensor',
+            location='Temporary line',
+            description='Temporary sensor.',
+        )
+
+        response = self.client.delete(
+            reverse('sensors-api'),
+            data=json.dumps({'id': sensor.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Sensor.objects.filter(pk=sensor.pk).exists())
+
+    def test_admin_cannot_delete_sensor_with_linked_leaks(self):
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+        sensor = Sensor.objects.create(
+            sensor_code='AQS-098',
+            display_name='Protected Sensor',
+            location='Protected line',
+        )
+        LeakReport.objects.create(
+            sensor=sensor,
+            leakage_rate='18.00',
+            status=LeakReport.Status.CRITICAL,
+        )
+
+        response = self.client.delete(
+            reverse('sensors-api'),
+            data=json.dumps({'id': sensor.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertTrue(Sensor.objects.filter(pk=sensor.pk).exists())
 
     def test_public_sensors_endpoint_returns_registered_sensors(self):
         Sensor.objects.create(
@@ -973,6 +1539,67 @@ class OperationsFeedApiTests(TestCase):
         self.assertEqual(response.json()['leakReport']['location'], 'Busega primary trunk')
         self.assertEqual(response.json()['leakReport']['sensorCode'], 'AQS-003')
 
+    def test_admin_can_update_leak_report(self):
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+        sensor = Sensor.objects.create(
+            sensor_code='AQS-012',
+            display_name='West Loop D10',
+            location='Busega backup line',
+        )
+        leak_report = LeakReport.objects.create(
+            sensor=sensor,
+            leakage_rate='18.25',
+            status=LeakReport.Status.INVESTIGATING,
+            observed_at='2026-03-11T09:45:00+03:00',
+            display_order=2,
+            is_active=True,
+        )
+
+        response = self.client.post(
+            reverse('leak-reports-api'),
+            data=json.dumps({
+                'id': leak_report.id,
+                'sensorId': sensor.pk,
+                'leakageRate': '12.10',
+                'status': 'resolved',
+                'observedAt': '2026-03-12T09:45:00+03:00',
+                'displayOrder': 4,
+                'isActive': False,
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        leak_report.refresh_from_db()
+        self.assertEqual(str(leak_report.leakage_rate), '12.10')
+        self.assertEqual(leak_report.status, LeakReport.Status.RESOLVED)
+        self.assertFalse(leak_report.is_active)
+
+    def test_admin_can_delete_leak_report(self):
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+        sensor = Sensor.objects.create(
+            sensor_code='AQS-013',
+            display_name='Delete Leak Sensor',
+            location='Delete Leak Location',
+        )
+        leak_report = LeakReport.objects.create(
+            sensor=sensor,
+            leakage_rate='13.25',
+            status=LeakReport.Status.INVESTIGATING,
+            display_order=2,
+        )
+
+        response = self.client.delete(
+            reverse('leak-reports-api'),
+            data=json.dumps({'id': leak_report.id}),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(LeakReport.objects.filter(pk=leak_report.pk).exists())
+
     def test_iot_sensor_code_creates_leak_report_with_sensor_location(self):
         sensor = Sensor.objects.create(
             sensor_code='AQS-004',
@@ -996,6 +1623,87 @@ class OperationsFeedApiTests(TestCase):
         payload = response.json()['leakReport']
         self.assertEqual(payload['sensorName'], 'North Flow Sensor')
         self.assertEqual(payload['location'], 'Kisaasi supply branch')
+
+    def test_iot_esp32_payload_accepts_leak_detected_location_and_time(self):
+        sensor = Sensor.objects.create(
+            sensor_code='AQS-014',
+            display_name='Zone 5 Telemetry Node',
+            location='Registered sensor location',
+        )
+
+        response = self.client.post(
+            reverse('iot-leak-reports-api'),
+            data=json.dumps({
+                'sensorCode': sensor.sensor_code,
+                'leakDetected': True,
+                'location': 'Valve chamber sector B',
+                'time': '2026-03-25T10:15:00+03:00',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        leak_report = LeakReport.objects.get(sensor=sensor)
+        self.assertEqual(leak_report.status, LeakReport.Status.CRITICAL)
+        self.assertTrue(leak_report.is_active)
+        self.assertEqual(leak_report.location, 'Valve chamber sector B')
+        self.assertEqual(
+            leak_report.observed_at,
+            datetime.fromisoformat('2026-03-25T10:15:00+03:00').astimezone(
+                leak_report.observed_at.tzinfo
+            ),
+        )
+        payload = response.json()['leakReport']
+        self.assertEqual(payload['location'], 'Valve chamber sector B')
+        self.assertEqual(payload['status'], 'critical')
+
+    def test_iot_esp32_payload_maps_no_leakage_to_resolved_signal(self):
+        sensor = Sensor.objects.create(
+            sensor_code='AQS-015',
+            display_name='Zone 6 Telemetry Node',
+            location='Registered sensor location',
+        )
+
+        response = self.client.post(
+            reverse('iot-leak-reports-api'),
+            data=json.dumps({
+                'sensorCode': sensor.sensor_code,
+                'leakDetected': 'no leakage',
+                'location': 'Valve chamber sector C',
+                'time': '2026-03-25T10:20:00+03:00',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 201)
+        leak_report = LeakReport.objects.get(sensor=sensor)
+        self.assertEqual(leak_report.status, LeakReport.Status.RESOLVED)
+        self.assertFalse(leak_report.is_active)
+        self.assertEqual(str(leak_report.leakage_rate), '0.00')
+        payload = response.json()['leakReport']
+        self.assertEqual(payload['status'], 'resolved')
+        self.assertFalse(payload['isActive'])
+
+    def test_iot_esp32_payload_rejects_conflicting_status_and_leak_detected(self):
+        sensor = Sensor.objects.create(
+            sensor_code='AQS-016',
+            display_name='Zone 7 Telemetry Node',
+            location='Registered sensor location',
+        )
+
+        response = self.client.post(
+            reverse('iot-leak-reports-api'),
+            data=json.dumps({
+                'sensorCode': sensor.sensor_code,
+                'leakDetected': False,
+                'status': 'critical',
+                'time': '2026-03-25T10:25:00+03:00',
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('status', response.json()['errors'])
 
 
 class SiteContentApiTests(TestCase):
@@ -1066,6 +1774,76 @@ class SiteContentApiTests(TestCase):
                 )
                 for section in payload['sections']['home']
             )
+        )
+
+    @override_settings(STORAGES=TEST_STORAGES)
+    def test_site_content_endpoint_includes_background_media_urls(self):
+        site_content = SiteContent.objects.get(pk=1)
+        site_content.login_background_video = SimpleUploadedFile(
+            'login-background.mp4',
+            b'video-bytes',
+            content_type='video/mp4',
+        )
+        site_content.login_background_primary = SimpleUploadedFile(
+            'login-primary.jpg',
+            b'primary-image-bytes',
+            content_type='image/jpeg',
+        )
+        site_content.login_background_secondary = SimpleUploadedFile(
+            'login-secondary.jpg',
+            b'secondary-image-bytes',
+            content_type='image/jpeg',
+        )
+        site_content.workspace_background_video = SimpleUploadedFile(
+            'workspace-background.mp4',
+            b'workspace-video-bytes',
+            content_type='video/mp4',
+        )
+        site_content.workspace_background_primary = SimpleUploadedFile(
+            'workspace-primary.jpg',
+            b'workspace-primary-image-bytes',
+            content_type='image/jpeg',
+        )
+        site_content.workspace_background_secondary = SimpleUploadedFile(
+            'workspace-secondary.jpg',
+            b'workspace-secondary-image-bytes',
+            content_type='image/jpeg',
+        )
+        site_content.save()
+
+        response = self.client.get(reverse('site-content-api'))
+        payload = response.json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('site_content/login/', payload['media']['loginBackgroundVideoUrl'])
+        self.assertIn('login-background', payload['media']['loginBackgroundVideoUrl'])
+        self.assertIn('site_content/login/', payload['media']['loginBackgroundPrimaryUrl'])
+        self.assertIn('login-primary', payload['media']['loginBackgroundPrimaryUrl'])
+        self.assertIn('site_content/login/', payload['media']['loginBackgroundSecondaryUrl'])
+        self.assertIn('login-secondary', payload['media']['loginBackgroundSecondaryUrl'])
+        self.assertIn(
+            'site_content/workspace/',
+            payload['media']['workspaceBackgroundVideoUrl'],
+        )
+        self.assertIn(
+            'workspace-background',
+            payload['media']['workspaceBackgroundVideoUrl'],
+        )
+        self.assertIn(
+            'site_content/workspace/',
+            payload['media']['workspaceBackgroundPrimaryUrl'],
+        )
+        self.assertIn(
+            'workspace-primary',
+            payload['media']['workspaceBackgroundPrimaryUrl'],
+        )
+        self.assertIn(
+            'site_content/workspace/',
+            payload['media']['workspaceBackgroundSecondaryUrl'],
+        )
+        self.assertIn(
+            'workspace-secondary',
+            payload['media']['workspaceBackgroundSecondaryUrl'],
         )
 
     def test_site_content_endpoint_omits_inactive_section_cards(self):
@@ -1141,6 +1919,64 @@ class SiteContentApiTests(TestCase):
         self.assertEqual(site_content.products_description, 'Managed from Django now.')
         self.assertEqual(response.json()['siteContent']['brand']['name'], 'Aqua Sentinel System')
 
+    @override_settings(STORAGES=TEST_STORAGES)
+    def test_admin_can_update_site_content_media_with_multipart_payload(self):
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse('site-content-api'),
+            data={
+                'brand_name': 'Aqual Sentinel',
+                'highlights': json.dumps({
+                    'home': [
+                        {
+                            'title': 'Updated highlight',
+                            'description': 'Saved from multipart form data.',
+                            'displayOrder': 1,
+                        }
+                    ]
+                }),
+                'loginBackgroundVideo': SimpleUploadedFile(
+                    'login-background.mp4',
+                    b'video-bytes',
+                    content_type='video/mp4',
+                ),
+                'workspaceBackgroundPrimary': SimpleUploadedFile(
+                    'workspace-primary.jpg',
+                    b'image-bytes',
+                    content_type='image/jpeg',
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        site_content = SiteContent.objects.get(pk=1)
+        self.assertTrue(bool(site_content.login_background_video))
+        self.assertTrue(bool(site_content.workspace_background_primary))
+        self.assertTrue(
+            SiteHighlight.objects.filter(page='home', title='Updated highlight').exists()
+        )
+
+    def test_admin_cannot_upload_unsupported_site_background_video_format(self):
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse('site-content-api'),
+            data={
+                'brand_name': 'Aqual Sentinel',
+                'loginBackgroundVideo': SimpleUploadedFile(
+                    'login-background.mov',
+                    b'video-bytes',
+                    content_type='video/quicktime',
+                ),
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn('loginBackgroundVideo', response.json()['errors'])
+
     def test_non_admin_cannot_update_site_content(self):
         regular_user = User.objects.create_user(
             username='siteviewer',
@@ -1158,6 +1994,114 @@ class SiteContentApiTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+
+    @override_settings(STORAGES=TEST_STORAGES)
+    def test_admin_can_reset_site_content(self):
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+        site_content = SiteContent.objects.get(pk=1)
+        site_content.brand_name = 'Custom Brand'
+        site_content.login_background_video = SimpleUploadedFile(
+            'login-background.mp4',
+            b'video-bytes',
+            content_type='video/mp4',
+        )
+        site_content.save()
+        SiteHighlight.objects.create(
+            page='home',
+            title='Temporary highlight',
+            display_order=99,
+        )
+        PageSection.objects.create(
+            page=PageSection.Page.HOME,
+            slot='temporary_section',
+            audience=PageSection.Audience.ALL,
+            title='Temporary section',
+            is_active=True,
+        )
+
+        response = self.client.delete(reverse('site-content-api'))
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()['siteContent']
+        self.assertEqual(payload['brand']['name'], 'Aqual Sentinel')
+        self.assertFalse(payload['media']['loginBackgroundVideoUrl'])
+        self.assertFalse(SiteHighlight.objects.filter(title='Temporary highlight').exists())
+        self.assertFalse(PageSection.objects.filter(slot='temporary_section').exists())
+        self.assertFalse(payload['highlights']['home'])
+        self.assertFalse(payload['sections']['home'])
+
+    def test_admin_can_replace_highlights_and_sections_from_frontend_payload(self):
+        admin_user = User.objects.get(username='uadmin')
+        self.client.force_login(admin_user)
+
+        response = self.client.post(
+            reverse('site-content-api'),
+            data=json.dumps({
+                'highlights': {
+                    'home': [
+                        {
+                            'title': 'New home highlight',
+                            'description': 'Updated from the frontend workspace.',
+                            'displayOrder': 1,
+                        }
+                    ]
+                },
+                'sections': {
+                    'home': [
+                        {
+                            'slot': 'frontend_home_cards',
+                            'audience': 'all',
+                            'kind': 'cards',
+                            'sourceType': '',
+                            'tabLabel': 'Frontend cards',
+                            'eyebrow': 'Frontend studio',
+                            'title': 'Managed from the workspace',
+                            'description': 'This section was saved from the frontend admin.',
+                            'ctaLabel': 'Review',
+                            'ctaLink': 'https://example.com/frontend',
+                            'itemLimit': 3,
+                            'displayOrder': 1,
+                            'isActive': True,
+                            'cards': [
+                                {
+                                    'key': 'frontend_card',
+                                    'eyebrow': 'Live',
+                                    'title': 'Frontend-owned content',
+                                    'description': 'Saved without Django admin.',
+                                    'tone': 'sea',
+                                    'displayOrder': 1,
+                                    'isActive': True,
+                                }
+                            ],
+                        }
+                    ]
+                },
+            }),
+            content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            SiteHighlight.objects.filter(page='home').count(),
+            1,
+        )
+        self.assertTrue(
+            SiteHighlight.objects.filter(
+                page='home',
+                title='New home highlight',
+            ).exists()
+        )
+        self.assertEqual(PageSection.objects.filter(page='home').count(), 1)
+        self.assertTrue(
+            PageSection.objects.filter(page='home', slot='frontend_home_cards').exists()
+        )
+        self.assertTrue(
+            PageSectionCard.objects.filter(card_key='frontend_card').exists()
+        )
+        payload = response.json()['siteContent']
+        self.assertEqual(payload['highlights']['home'][0]['title'], 'New home highlight')
+        self.assertEqual(payload['sections']['home'][0]['slot'], 'frontend_home_cards')
 
 
 class BootstrapAdminCommandTests(TestCase):
